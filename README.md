@@ -145,7 +145,7 @@ flowchart LR
 | OBB detection | `yolov8_obb`, `yolov11_obb` | ultralytics YOLO-OBB | `[1, 4+NC+1, A]` (angle last) | `yolov8_obb` |
 | Classification | `efficientnet`, `classifier` | timm | `[1, NC]` softmax | `efficientnet` |
 | Segmentation | `deeplab3pp`, `deeplab3pp_one_channel` | smp (DeepLabV3+) / torchvision | `[1, C, H, W]` softmax | `deeplab3pp` |
-| Anomaly | `foundation_anomaly` | recon-AE (1st pass) | `[1, 1, H, W]` heatmap `[0,1]` | `foundation_anomaly` |
+| Anomaly | `foundation_anomaly` | feature-recon (frozen ResNet18) | `[1, 1, H, W]` heatmap `[0,1]` | `foundation_anomaly` |
 | **(roadmap)** detection | `dfine_hbb`, `rfdetr_hbb` | D-FINE / RF-DETR | `[1, 4+NC, A]` (A=queries)† | `yolov8_hbb` (unified)† |
 | **(roadmap)** ocr | `paddleocr` | PaddleOCR det+rec+cls | DB map / CTC / angle | (db / parseq) |
 
