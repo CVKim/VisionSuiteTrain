@@ -83,6 +83,20 @@ def test_ad_model_yaml_norm_range_and_no_normalize():
     assert my["preprocess"]["normalize"] is False           # 그래프 /255 bake → VSC 재정규화 금지
 
 
+def test_iter_images_globs_and_mvtec_autodetect(tmp_path):
+    from visionsuitetrain.data.readers.images import iter_images, mvtec_normal_dir
+    (tmp_path / "x.png").write_text("x")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "y.jpg").write_text("y")
+    (tmp_path / "z.txt").write_text("z")
+    imgs = iter_images(tmp_path)
+    assert len(imgs) == 2 and all(i.lower().endswith((".png", ".jpg")) for i in imgs)  # txt 제외
+    good = tmp_path / "train" / "good"
+    good.mkdir(parents=True)
+    assert mvtec_normal_dir(tmp_path) == good             # MVTec <cat>/train/good 자동 인식
+    assert mvtec_normal_dir(tmp_path / "sub") == tmp_path / "sub"   # 없으면 root
+
+
 def test_cli_rejects_config_and_preset_together(tmp_path):
     from visionsuitetrain.cli import main
     c = tmp_path / "c.yaml"
