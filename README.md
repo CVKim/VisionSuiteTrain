@@ -143,12 +143,15 @@ flowchart LR
 | HBB detection | `yolov8_hbb`, `yolov7_hbb` | ultralytics YOLO | `[1, 4+NC, A]` | `yolov8_hbb` |
 | Classification | `efficientnet`, `classifier` | timm | `[1, NC]` | `efficientnet` |
 | Segmentation | `deeplab3pp`, `deeplab3pp_one_channel` | smp (DeepLabV3+) / torchvision | `[1, C, H, W]` | `deeplab3pp` |
-| **(roadmap)** detection | `dfine_hbb`, `rfdetr_hbb` | D-FINE / RF-DETR | `[1, 4+NC, A]`† | new DETR handler† |
-| **(roadmap)** anomaly | `foundation_anomaly` | foundation AD | `[1, C, H, W]` heatmap | `foundation_anomaly` |
+| **(roadmap)** detection | `dfine_hbb`, `rfdetr_hbb` | D-FINE / RF-DETR | `[1, 4+NC, A]` (A=queries)† | `yolov8_hbb` (unified)† |
+| **(roadmap)** anomaly | `foundation_anomaly` | foundation AD | `[1, 1, H, W]` heatmap | `foundation_anomaly` |
 
-† Transformer detectors emit `(labels, boxes, scores)` natively; the 2nd-scope
-work is to either export them into the `eYolov8Hbb` layout **or** add a dedicated
-DETR handler in VisionSuiteCore. Tracked in `canonical.py` (`ARCH_TO_MODEL_TYPE`).
+† **Verified against real production exports.** D-FINE `[1, 16, 300]` and RF-DETR
+`[1, 27, 300]` already emit the **unified `[1, 4+NC, A]` channel-first layout**
+(A = 300 queries instead of anchors, `value_range [0, H]`) — so they decode through
+the **existing `yolov8_hbb` handler with no new VisionSuiteCore handler**. The
+2nd-scope work is only the *training adapter* (wrapping the D-FINE / RF-DETR repos);
+the data pipeline (`labelme` HBB) and the export contract are identical to YOLO.
 
 ---
 

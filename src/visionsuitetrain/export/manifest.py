@@ -74,6 +74,13 @@ def build_manifest(cfg: TrainConfig, output_shape: list, *,
         seg_act = "softmax" if e.seg_mode == "multi_channel" else "sigmoid"
         out_spec["axes"] = _seg_output_axes(len(names), seg_act, e.seg_background_class)
 
+    # patch inference 메타(HBB 대형 이미지 타일링) — preprocess_carry.patch 있으면 enabled
+    patch_cfg = e.preprocess_carry.get("patch")
+    patch_block = ({"enabled": True,
+                    "height": int(patch_cfg.get("height", H)),
+                    "width": int(patch_cfg.get("width", W))}
+                   if patch_cfg else {"enabled": False, "height": None, "width": None})
+
     manifest: dict[str, Any] = {
         "environment": env,
         "inputs": {
@@ -87,7 +94,7 @@ def build_manifest(cfg: TrainConfig, output_shape: list, *,
         "outputs": {out_name: out_spec},
         # talos manifest 정합: maskings 키 없음, rois 항상 존재, patch 항상 존재
         "preprocessing": {
-            "patch": {"enabled": False, "height": None, "width": None},
+            "patch": patch_block,
             "rois": [],
             "steps": [step],
         },
@@ -106,4 +113,8 @@ def build_manifest(cfg: TrainConfig, output_shape: list, *,
     # 세그멘테이션: 배경 채널 인덱스 명시(label_map 은 0..N-1 전체 유지)
     if is_seg:
         manifest["task"]["background_index"] = e.seg_background_class
+    # 패치 경계 억제(HBB patch 모델) — talos manifest 의 top-level postprocessing
+    bs = e.preprocess_carry.get("border_suppression")
+    if bs is not None:
+        manifest["postprocessing"] = {"border_suppression": float(bs)}
     return manifest

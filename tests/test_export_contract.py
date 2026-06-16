@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from visionsuitetrain.config.schema import load_train_config
+from visionsuitetrain.config.canonical import model_type_of, ARCH_TASK, PLANNED
 from visionsuitetrain.export import build_manifest, build_model_yaml, VscExporter
 
 CFG_DIR = Path(__file__).resolve().parents[1] / "configs" / "train"
@@ -109,3 +110,43 @@ def test_seg_one_channel_uses_sigmoid_activation():
     m = build_manifest(cfg, [1, 3, 512, 512])
     feat = next(a for a in m["outputs"]["output"]["axes"] if a["type"] == "features")["structure"][0]
     assert feat["activation"] == "sigmoid"
+
+
+# ── 2차 범위 컨트랙트 (레퍼런스 export 대조: D-FINE/RF-DETR/Foundation AD) ──
+def test_detr_archs_decode_via_unified_yolov8_hbb():
+    # D-FINE/RF-DETR export = [1,4+NC,A](A=쿼리) → 동일 yolov8_hbb 디코드(신규 핸들러 불요)
+    assert model_type_of("dfine_hbb") == "yolov8_hbb"
+    assert model_type_of("rfdetr_hbb") == "yolov8_hbb"
+
+
+def test_foundation_anomaly_mapping():
+    assert model_type_of("foundation_anomaly") == "foundation_anomaly"
+    assert ARCH_TASK["foundation_anomaly"] == "anomaly_detection"
+    assert {"dfine_hbb", "rfdetr_hbb", "foundation_anomaly"} <= PLANNED
+
+
+def test_dfine_sample_config_decodes_as_yolov8_hbb():
+    cfg = load_train_config(CFG_DIR / "dfine_hbb.yaml")
+    assert cfg.task == "hbbdetection" and cfg.resolved_arch == "dfine_hbb"
+    my = build_model_yaml(cfg, weights="model.onnx")
+    assert my["model"]["type"] == "yolov8_hbb"            # 통일 디코드
+    assert my["postprocess"]["type"] == "yolov8_hbb_decode"
+
+
+def test_manifest_and_model_yaml_emit_patch_and_border_suppression():
+    cfg = load_train_config(CFG_DIR / "dfine_hbb.yaml")   # patch + border_suppression 포함
+    m = build_manifest(cfg, [1, 7, 300])
+    assert m["preprocessing"]["patch"] == {"enabled": True, "height": 1024, "width": 1024}
+    assert m["postprocessing"]["border_suppression"] == 0.2
+    my = build_model_yaml(cfg, weights="model.onnx")
+    assert my["inference"]["patch"]["enable"] is True
+    assert my["inference"]["patch"]["border_suppress"] == 0.2
+    assert my["inference"]["patch"]["overlap"] == 0.5
+
+
+def test_no_patch_block_when_unconfigured():
+    cfg = load_train_config(CFG_DIR / "yolov8_hbb.yaml")  # patch 미설정
+    m = build_manifest(cfg, [1, 7, 8400])
+    assert m["preprocessing"]["patch"]["enabled"] is False
+    assert "postprocessing" not in m
+    assert build_model_yaml(cfg, weights="m.onnx")["inference"]["patch"]["enable"] is False
