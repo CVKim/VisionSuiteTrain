@@ -52,6 +52,8 @@ def build_model_yaml(cfg: TrainConfig, *, weights: str = "",
     postprocess: dict[str, Any] = {"type": f"{mtype}_decode"}
     if cfg.task in ("hbbdetection", "obbdetection"):
         ncv = nms_conf_vector or [0.25] * len(names)
+        if len(ncv) != len(names):     # decision 벡터는 names 수에 정합해야(VSC per-class)
+            raise ValueError(f"nms_conf_vector 길이({len(ncv)}) != names({len(names)})")
         postprocess.update({
             "conf_thres": 0.25, "iou_thres": 0.45, "max_det": 300,
             "classes": names,

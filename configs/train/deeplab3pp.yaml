@@ -12,7 +12,7 @@ task: segmentation
 arch: deeplab3pp
 arch_variant:
   lib: smp                     # smp(DeepLabV3+) | torchvision(DeepLabV3)
-  encoder: resnet50
+  encoder: efficientnet-b2     # 산업검사 관행 백본(resnet50/101 도 가능)
   encoder_weights: imagenet
 
 dataset:

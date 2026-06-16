@@ -20,7 +20,7 @@ dependencies = [
 yolo = ["ultralytics>=8.1"]
 cls  = ["timm>=1.0"]
 seg  = ["segmentation-models-pytorch>=0.3"]
-export = ["onnx>=1.15", "onnxslim>=0.1", "pycocotools>=2.0"]
+export = ["onnx>=1.15", "onnxslim>=0.1"]
 dev  = ["pytest>=7.4"]
 
 [project.scripts]

@@ -11,6 +11,15 @@ from ..registry import register_trainer
 from .base import BaseTrainer
 
 
+class _RemapToNames:
+    """ImageFolder 알파벳순 타깃 → dataset.names 순서 인덱스.
+
+    DataLoader 워커(Windows spawn)에서 피클 가능해야 하므로 lambda 가 아닌 클래스.
+    """
+    def __init__(self, mapping: dict): self.mapping = mapping
+    def __call__(self, t: int) -> int: return self.mapping[t]
+
+
 @register_trainer("classification", "efficientnet", "classifier")
 class EfficientNetTrainer(BaseTrainer):
 
@@ -46,12 +55,24 @@ class EfficientNetTrainer(BaseTrainer):
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
         train_ds = datasets.ImageFolder(str(Path(data) / "train"), transform=tf)
+        # ⚠ ImageFolder 는 디렉터리명을 알파벳순 인덱싱 → names 순서로 재매핑해야
+        #   logit 채널 i == names[i] == manifest.label_map[i] 성립(클래스 뒤바뀜 방지).
+        name_to_idx = {n: i for i, n in enumerate(self.names)}
+        unknown = [c for c in train_ds.classes if c not in name_to_idx]
+        if unknown:
+            raise ValueError(f"학습 데이터에 dataset.names 에 없는 클래스: {unknown}")
+        idx_to_name = {i: c for c, i in train_ds.class_to_idx.items()}
+        train_ds.target_transform = _RemapToNames(
+            {i: name_to_idx[idx_to_name[i]] for i in idx_to_name})
         loader = DataLoader(train_ds, batch_size=t.batch, shuffle=True, num_workers=t.workers)
 
-        model = self._model(len(train_ds.classes)).to(dev)
+        # head 는 항상 '선언된 전체 클래스 수' → 채널 순서=names, NC==len(names)
+        # (train↔export 동일 크기라 state_dict 로드 mismatch 불가; 0-sample 클래스도 채널 점유)
+        model = self._model(len(self.names)).to(dev)
         opt = torch.optim.AdamW(model.parameters(), lr=t.lr, weight_decay=t.weight_decay)
         crit = nn.CrossEntropyLoss()
         model.train()
+        loss = torch.tensor(0.0)
         for ep in range(t.epochs):
             for x, y in loader:
                 x, y = x.to(dev), y.to(dev)
@@ -59,9 +80,11 @@ class EfficientNetTrainer(BaseTrainer):
                 loss = crit(model(x), y)
                 loss.backward()
                 opt.step()
-            print(f"[effnet] epoch {ep+1}/{t.epochs} loss={loss.item():.4f}")
+            print(f"[effnet] epoch {ep+1}/{t.epochs} loss={float(loss):.4f}")
         ckpt = self.out_dir / "best.pt"
-        torch.save({"state_dict": model.state_dict(), "classes": train_ds.classes}, ckpt)
+        torch.save({"state_dict": model.state_dict(), "classes": list(self.names),
+                    "arch_variant": dict(self.cfg.arch_variant),
+                    "num_classes": len(self.names)}, ckpt)
         return ckpt
 
     def export_to_vsc(self, ckpt: Path) -> dict[str, Path]:
@@ -70,8 +93,11 @@ class EfficientNetTrainer(BaseTrainer):
         from ..export import VscExporter, introspect_output_shape
 
         e = self.cfg.export
-        model = self._model(len(self.names))
         sd = torch.load(str(ckpt), map_location="cpu")
+        ck_nc = sd.get("num_classes", len(self.names)) if isinstance(sd, dict) else len(self.names)
+        if ck_nc != len(self.names):   # 학습/export config 클래스 수 불일치 → fail-fast
+            raise ValueError(f"ckpt num_classes({ck_nc}) != dataset.names({len(self.names)})")
+        model = self._model(len(self.names))
         model.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
         model.eval()
         dst = self.out_dir / "model.onnx"

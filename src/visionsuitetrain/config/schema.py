@@ -11,7 +11,7 @@ from typing import Any, Optional
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-from .canonical import TASK_TYPES, ARCH_TASK, canonical_arch
+from .canonical import TASK_TYPES, ARCH_TASK, ARCH_TO_MODEL_TYPE, canonical_arch
 
 
 class RunCfg(BaseModel):
@@ -98,6 +98,14 @@ class TrainConfig(BaseModel):
             raise ValueError(f"task '{v}' invalid. one of {sorted(TASK_TYPES)}")
         return v
 
+    @field_validator("arch")
+    @classmethod
+    def _arch_known(cls, v: str) -> str:
+        # 미등록 arch(오타 등)는 로드 시점에 차단(이전엔 fail-open 으로 통과 → build 시 KeyError)
+        if canonical_arch(v) not in ARCH_TO_MODEL_TYPE:
+            raise ValueError(f"arch '{v}' unknown. one of {sorted(ARCH_TO_MODEL_TYPE)}")
+        return v
+
     @property
     def resolved_arch(self) -> str:
         return canonical_arch(self.arch)
@@ -114,9 +122,15 @@ def load_train_config(path: str | Path) -> TrainConfig:
         raise ValueError(
             f"arch '{cfg.arch}'(={cfg.resolved_arch}) 는 task '{expected}' 인데 "
             f"config.task='{cfg.task}'")
-    # export 입력과 train.imgsz 정합 권고(det/seg)
+    # export 입력과 train.imgsz 정합 권고(det/seg) — 어긋나면 경고(어댑터가 최종 처리)
     if cfg.task in ("hbbdetection", "obbdetection", "segmentation"):
         if cfg.export.input.w != cfg.train.imgsz or cfg.export.input.h != cfg.train.imgsz:
-            # 경고만(정사각 아닌 케이스 허용) — 어댑터가 최종 검증
-            pass
+            print(f"[config] warn: train.imgsz({cfg.train.imgsz}) != "
+                  f"export.input({cfg.export.input.h}x{cfg.export.input.w}) — 학습/배포 해상도 상이")
+    # seg one_channel arch ↔ seg_mode 정합(model.type 와 decode 메타 모순 방지)
+    if cfg.resolved_arch.endswith("_one_channel") and cfg.export.seg_mode != "one_channel":
+        raise ValueError("arch '_one_channel' 인데 export.seg_mode != 'one_channel'")
+    if cfg.task == "segmentation" and cfg.export.seg_mode == "one_channel" \
+            and not cfg.resolved_arch.endswith("_one_channel"):
+        raise ValueError("export.seg_mode 'one_channel' 인데 arch 가 '_one_channel' 아님")
     return cfg

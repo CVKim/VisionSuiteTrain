@@ -42,9 +42,13 @@ def read_labelme(json_path: str | Path, image_root: Optional[str | Path] = None)
 
     regions: list[Region] = []
     for s in d.get("shapes", []) or []:
+        label = str(s.get("label", "")).strip()
+        if not label:                 # 라벨 미입력 도형 → IR/통계 오염 방지 위해 제외
+            print(f"[labelme] skip empty-label shape in {jp.name}")
+            continue
         pts = [(float(x), float(y)) for x, y in (s.get("points") or [])]
         regions.append(Region(
-            class_name=str(s.get("label", "")).strip(),
+            class_name=label,
             shape_type=str(s.get("shape_type", "polygon")),
             points=pts,
             group_id=s.get("group_id"),

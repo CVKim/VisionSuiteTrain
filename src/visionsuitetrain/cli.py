@@ -9,6 +9,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from . import __version__
 from . import trainers  # noqa: F401  (registry 자동등록 트리거)
 from .config.schema import load_train_config
@@ -25,15 +27,17 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
+    from .config.canonical import PLANNED
     cfg = load_train_config(args.config)
     trainer_cls = None
     for arch in (cfg.resolved_arch, cfg.arch):
         trainer_cls = TRAINER_REGISTRY.get((cfg.task, arch))
         if trainer_cls:
             break
+    adapter = "ok" if trainer_cls else ("planned(2차)" if cfg.resolved_arch in PLANNED else "MISSING")
     print(f"[vstrain] config OK: run={cfg.run.name} task={cfg.task} "
           f"arch={cfg.arch}(={cfg.resolved_arch}) names={len(cfg.dataset.names)} "
-          f"adapter={'ok' if trainer_cls else 'MISSING'} out={cfg.run.out_dir}")
+          f"adapter={adapter} out={cfg.run.out_dir}")
     return 0 if trainer_cls else 2
 
 
@@ -53,7 +57,11 @@ def _cmd_train(args: argparse.Namespace) -> int:
 
 def _cmd_export(args: argparse.Namespace) -> int:
     cfg = load_train_config(args.config)
-    out = build_trainer(cfg).export_to_vsc(Path(args.ckpt))
+    ckpt = Path(args.ckpt)
+    if not ckpt.exists():            # 재export 엔트리포인트 — ckpt 조기 검증으로 명확한 실패
+        print(f"[vstrain] ckpt not found: {ckpt}", file=sys.stderr)
+        return 2
+    out = build_trainer(cfg).export_to_vsc(ckpt)
     print(f"[vstrain] exported: { {k: str(v) for k, v in out.items()} }")
     return 0
 
@@ -88,7 +96,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (FileNotFoundError, ValueError, KeyError, ValidationError) as e:
+        # 예상 가능한 config/usage 오류는 깔끔한 메시지 + 종료코드(스택트레이스 X)
+        print(f"[vstrain] error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

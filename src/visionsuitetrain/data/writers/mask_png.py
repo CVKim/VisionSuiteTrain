@@ -13,16 +13,33 @@ from ..ir import Sample
 
 
 def to_mask(sample: Sample, name2id: dict[str, int], background: int = 0) -> np.ndarray:
-    """한 Sample → HxW uint8 class-id 맵."""
+    """한 Sample → HxW uint8 class-id 맵. shape_type 별 렌더(polygon/rectangle/circle).
+
+    polygon 만 처리하던 과거 동작은 rectangle/circle seg 영역을 조용히 누락시켰음 →
+    shape_type 분기로 렌더하고, 지원 못 하는 도형은 경고(silent drop 방지).
+    """
     H = max(1, sample.height)
     W = max(1, sample.width)
     mask = np.full((H, W), background, dtype=np.uint8)
     for r in sample.regions:
-        if r.class_name not in name2id or len(r.points) < 3:
+        if r.class_name not in name2id or not r.points:
             continue
         cid = int(name2id[r.class_name])
-        pts = np.array([[int(round(x)), int(round(y))] for x, y in r.points], dtype=np.int32)
-        cv2.fillPoly(mask, [pts], cid)
+        st = r.shape_type
+        if st == "rectangle" and len(r.points) == 2:
+            (x0, y0), (x1, y1) = r.points[0], r.points[1]
+            cv2.rectangle(mask, (int(round(x0)), int(round(y0))),
+                          (int(round(x1)), int(round(y1))), cid, thickness=-1)
+        elif st == "circle" and len(r.points) == 2:
+            (cx, cy), (ex, ey) = r.points[0], r.points[1]
+            rad = int(round(((ex - cx) ** 2 + (ey - cy) ** 2) ** 0.5))
+            cv2.circle(mask, (int(round(cx)), int(round(cy))), rad, cid, thickness=-1)
+        elif len(r.points) >= 3:      # polygon
+            pts = np.array([[int(round(x)), int(round(y))] for x, y in r.points], dtype=np.int32)
+            cv2.fillPoly(mask, [pts], cid)
+        else:
+            print(f"[mask] skip unsupported region shape={st} pts={len(r.points)} "
+                  f"({sample.image_path})")
     return mask
 
 

@@ -33,3 +33,31 @@ def introspect_output_shape(onnx_path: str | Path, output_index: int = 0) -> lis
     for d in dims:
         shape.append(int(d.dim_value) if d.HasField("dim_value") else -1)
     return shape
+
+
+def introspect_input_shape(onnx_path: str | Path, input_index: int = 0) -> list:
+    """첫 입력 텐서의 shape([d0,d1,...]) — symbolic dim 은 -1. 실제 C/H/W 검증용."""
+    import onnx  # lazy
+    m = onnx.load(str(onnx_path))
+    inp = m.graph.input[input_index]
+    dims = inp.type.tensor_type.shape.dim
+    return [int(d.dim_value) if d.HasField("dim_value") else -1 for d in dims]
+
+
+def introspect_opset(onnx_path: str | Path) -> int | None:
+    """실제 ONNX 의 default(ai.onnx) opset 버전. config opset 과 대조용."""
+    import onnx  # lazy
+    m = onnx.load(str(onnx_path))
+    for op in m.opset_import:
+        if op.domain in ("", "ai.onnx"):
+            return int(op.version)
+    return int(m.opset_import[0].version) if m.opset_import else None
+
+
+def introspect_io_names(onnx_path: str | Path) -> tuple[str | None, str | None]:
+    """(첫 입력명, 첫 출력명) — io_names(data/output) 정합 검증용."""
+    import onnx  # lazy
+    m = onnx.load(str(onnx_path))
+    in_name = m.graph.input[0].name if m.graph.input else None
+    out_name = m.graph.output[0].name if m.graph.output else None
+    return in_name, out_name

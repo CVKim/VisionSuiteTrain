@@ -30,7 +30,8 @@ class VscExporter:
         manifest = build_manifest(self.cfg, output_shape, thresholds=thresholds)
         model_yaml = build_model_yaml(self.cfg, weights=weights_name,
                                       nms_conf_vector=nms_conf_vector)
-        self.assert_consistency(manifest, model_yaml, output_shape)  # fail-fast
+        # 실제 ONNX 아티팩트까지 대조(입력 C/H/W·opset·io 이름)
+        self.assert_consistency(manifest, model_yaml, output_shape, onnx_path=onnx_path)
 
         name = self.cfg.run.name
         man_p = out_dir / f"{name}_manifest.yaml"
@@ -42,7 +43,8 @@ class VscExporter:
         return {"onnx": Path(onnx_path), "model_yaml": my_p, "manifest": man_p}
 
     # ── fail-fast 정합 검증 ──
-    def assert_consistency(self, manifest: dict, model_yaml: dict, output_shape: list) -> None:
+    def assert_consistency(self, manifest: dict, model_yaml: dict, output_shape: list,
+                           onnx_path: Optional[str | Path] = None) -> None:
         cfg, names = self.cfg, self.names
         in_name = cfg.export.io_names.input
 
@@ -63,6 +65,30 @@ class VscExporter:
         if nc is not None and nc != len(names):
             raise AssertionError(f"ONNX 출력 NC({nc}) != len(names)({len(names)})")
 
+        # 실제 ONNX 아티팩트와 cfg 대조(cfg-vs-cfg tautology 보완 — 입력 dim·opset·io 이름)
+        if onnx_path is not None:
+            self._assert_against_onnx(onnx_path)
+
+    def _assert_against_onnx(self, onnx_path: str | Path) -> None:
+        from .onnx_io import (introspect_input_shape, introspect_io_names,
+                              introspect_opset)
+        cfg = self.cfg
+        real_in = introspect_input_shape(onnx_path)        # [N, C, H, W] 기대
+        if len(real_in) == 4:
+            for got, exp, nm in ((real_in[1], cfg.export.input.c, "C"),
+                                 (real_in[2], cfg.export.input.h, "H"),
+                                 (real_in[3], cfg.export.input.w, "W")):
+                if got not in (-1, exp):
+                    raise AssertionError(f"ONNX 실제 입력 {nm}({got}) != config({exp})")
+        real_op = introspect_opset(onnx_path)
+        if real_op is not None and real_op != cfg.export.opset:
+            raise AssertionError(f"ONNX 실제 opset({real_op}) != config({cfg.export.opset})")
+        i_name, o_name = introspect_io_names(onnx_path)
+        if i_name not in (None, cfg.export.io_names.input):
+            raise AssertionError(f"ONNX 입력명({i_name}) != io_names.input({cfg.export.io_names.input})")
+        if o_name not in (None, cfg.export.io_names.output):
+            raise AssertionError(f"ONNX 출력명({o_name}) != io_names.output({cfg.export.io_names.output})")
+
     def _infer_nc(self, output_shape: list) -> Optional[int]:
         if not output_shape:
             return None
@@ -74,8 +100,10 @@ class VscExporter:
             if task == "obbdetection":        # [B, 5+NC, A]
                 v = output_shape[1]
                 return None if v < 0 else v - 5
-            if task == "classification":      # [B, NC]
-                v = output_shape[-1]
+            if task == "classification":      # [B, NC] 또는 [B, NC, 1, 1] 동일취급
+                v = output_shape[1] if (len(output_shape) > 2
+                                        and all(d == 1 for d in output_shape[2:])) \
+                    else output_shape[-1]
                 return None if v < 0 else v
             if task == "segmentation":        # [B, C, H, W]
                 v = output_shape[1]

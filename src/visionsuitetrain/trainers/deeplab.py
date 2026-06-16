@@ -39,19 +39,23 @@ class DeepLabTrainer(BaseTrainer):
         return pairs
 
     def _model(self, num_classes: int):
-        lib = self.cfg.arch_variant.get("lib", "smp")
-        backbone = self.cfg.arch_variant.get("backbone", "resnet50")
+        av = self.cfg.arch_variant
+        lib = av.get("lib", "smp")
         if lib == "torchvision":
             from torchvision.models import segmentation as seg
+            key = av.get("backbone", av.get("encoder", "resnet50"))   # 두 키 모두 허용(통일)
             ctor = {
                 "resnet50": seg.deeplabv3_resnet50,
                 "resnet101": seg.deeplabv3_resnet101,
                 "mobilenet": seg.deeplabv3_mobilenet_v3_large,
-            }[backbone]
+            }.get(key)
+            if ctor is None:
+                raise ValueError(f"torchvision deeplab backbone '{key}' 미지원"
+                                 "(resnet50/resnet101/mobilenet). 그 외 백본은 lib: smp 사용")
             return ctor(num_classes=num_classes, aux_loss=True)
         import segmentation_models_pytorch as smp  # DeepLabV3+ (= deeplab3pp)
-        enc = self.cfg.arch_variant.get("encoder", backbone)
-        weights = self.cfg.arch_variant.get("encoder_weights", "imagenet")
+        enc = av.get("encoder", av.get("backbone", "resnet50"))
+        weights = av.get("encoder_weights", "imagenet")
         return smp.DeepLabV3Plus(encoder_name=enc, encoder_weights=weights,
                                  in_channels=self.cfg.export.input.c, classes=num_classes)
 
@@ -99,7 +103,9 @@ class DeepLabTrainer(BaseTrainer):
                 opt.step()
             print(f"[deeplab] epoch {ep+1}/{t.epochs} loss={float(loss):.4f}")
         ckpt = self.out_dir / "best.pt"
-        torch.save({"state_dict": model.state_dict()}, ckpt)
+        torch.save({"state_dict": model.state_dict(),
+                    "arch_variant": dict(self.cfg.arch_variant),
+                    "num_classes": len(self.names)}, ckpt)   # ckpt 자기기술(재export 안전)
         return ckpt
 
     def export_to_vsc(self, ckpt: Path) -> dict[str, Path]:
@@ -109,8 +115,11 @@ class DeepLabTrainer(BaseTrainer):
         from ..export import VscExporter, introspect_output_shape
 
         e = self.cfg.export
-        model = self._model(len(self.names))
         sd = torch.load(str(ckpt), map_location="cpu")
+        ck_nc = sd.get("num_classes", len(self.names)) if isinstance(sd, dict) else len(self.names)
+        if ck_nc != len(self.names):   # 학습/export config 클래스 수 불일치 → fail-fast
+            raise ValueError(f"ckpt num_classes({ck_nc}) != dataset.names({len(self.names)})")
+        model = self._model(len(self.names))
         model.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
         model.eval()
 

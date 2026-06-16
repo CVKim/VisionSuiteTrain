@@ -13,9 +13,12 @@ from ..ir import Sample
 
 def label_of(sample: Sample, names: list[str]) -> Optional[str]:
     nameset = set(names)
-    for lab in sample.image_labels:
-        if lab in nameset:
-            return lab
+    # 이미지단위 플래그: 정확히 1개만 매칭될 때 채택(2개 이상이면 모호 → region 폴백)
+    flagged = [lab for lab in sample.image_labels if lab in nameset]
+    if len(flagged) == 1:
+        return flagged[0]
+    if len(flagged) > 1:
+        return None
     cls = {r.class_name for r in sample.regions if r.class_name in nameset}
     if len(cls) == 1:
         return next(iter(cls))

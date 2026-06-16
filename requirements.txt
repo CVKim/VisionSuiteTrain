@@ -13,9 +13,8 @@ timm>=1.0                   # efficientnet 등 classification
 segmentation-models-pytorch>=0.3   # deeplabv3+ (torchvision deeplab 도 가능)
 
 # export / 평가
-onnx>=1.15
+onnx>=1.15                  # onnx_io: io rename + shape/opset introspect
 onnxslim>=0.1               # onnx 그래프 단순화(ultralytics export simplify)
-pycocotools>=2.0            # COCO 평가/포맷
 
 # dev
 pytest>=7.4

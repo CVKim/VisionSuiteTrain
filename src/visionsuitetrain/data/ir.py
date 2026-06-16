@@ -16,7 +16,15 @@ class Region:
     group_id: Optional[int] = None         # 인스턴스 묶음(없으면 None)
 
     def aabb(self) -> tuple[float, float, float, float]:
-        """축정렬 bbox (x, y, w, h) 픽셀."""
+        """축정렬 bbox (x, y, w, h) 픽셀.
+
+        labelme circle 은 points=[center, edge] 2점(반지름=두 점 거리)이라
+        min/max 로는 외접 사각형이 안 됨 → circle 은 (cx-r, cy-r, 2r, 2r) 로 계산.
+        """
+        if self.shape_type == "circle" and len(self.points) >= 2:
+            (cx, cy), (ex, ey) = self.points[0], self.points[1]
+            r = ((ex - cx) ** 2 + (ey - cy) ** 2) ** 0.5
+            return cx - r, cy - r, 2 * r, 2 * r
         xs = [p[0] for p in self.points]
         ys = [p[1] for p in self.points]
         x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
