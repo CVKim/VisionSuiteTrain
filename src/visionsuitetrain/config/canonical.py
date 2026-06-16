@@ -41,8 +41,8 @@ ARCH_TO_MODEL_TYPE = {
     "dfine_hbb": "yolov8_hbb",          # DETR-family — 동일 컨트랙트(엔진=RT-DETR, 정확 가중치는 upstream)
     "rfdetr_hbb": "yolov8_hbb",         # DETR-family — A=쿼리, 디코드(conf+NMS) 동일
     "foundation_anomaly": "foundation_anomaly",   # [1,1,H,W] heatmap, scalar threshold
-    "crnn_ctc": "parseq",               # OCR 인식 — [B,T,NC+1] CTC, VSC parseq 핸들러로 디코드
-    "parseq": "parseq",
+    "crnn_ctc": "crnn_ctc",             # OCR 인식 — [B,T,NC+1] CTC. ★VSC 에 CTC 디코드 핸들러 필요
+                                        #   (기존 parseq 핸들러는 attention[idx0=EOS, collapse 없음]이라 비호환)
 }
 
 # 정규 arch → 허용 task (config 정합 검증용)
@@ -58,13 +58,12 @@ ARCH_TASK = {
     "rfdetr_hbb": "hbbdetection",
     "foundation_anomaly": "anomaly_detection",
     "crnn_ctc": "ocr",
-    "parseq": "ocr",
 }
 
 # 어댑터가 실제 등록된 canonical arch (정보용; 실제 게이트는 registry/build_trainer)
 IMPLEMENTED = {"yolov8_hbb", "yolov7_hbb", "yolov8_obb", "rtdetr_hbb", "dfine_hbb",
                "rfdetr_hbb", "efficientnet", "deeplab3pp", "deeplab3pp_one_channel",
-               "foundation_anomaly", "crnn_ctc", "parseq"}
+               "foundation_anomaly", "crnn_ctc"}
 # 매핑·컨트랙트 확정 + 학습 엔진 가용(전 arch 어댑터 등록). 정확한 upstream 가중치
 #   (D-FINE/RF-DETR repo, PaddleOCR det+cls)는 동일 어댑터 뒤 엔진 교체로 확장.
 PLANNED: set[str] = set()

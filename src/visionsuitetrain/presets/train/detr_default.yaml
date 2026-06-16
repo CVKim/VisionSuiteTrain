@@ -1,5 +1,6 @@
 # DETR-family HBB (ultralytics RT-DETR → 통일 [1,4+NC,A]). dataset 런타임 주입(labelme HBB).
 # arch: rtdetr_hbb | dfine_hbb | rfdetr_hbb (모두 동일 컨트랙트, 엔진=RT-DETR).
+# ⚠ RT-DETR top-300 query → imgsz ≥ 320 필요(작으면 'selected index k out of range').
 run: { name: detr_default }
 task: hbbdetection
 arch: rtdetr_hbb

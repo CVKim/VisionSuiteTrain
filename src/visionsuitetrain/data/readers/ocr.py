@@ -17,9 +17,10 @@ def read_ocr_labels(root: str | Path, labels_file: str = "labels.txt") -> list[t
         if "\t" not in line:
             continue
         name, text = line.split("\t", 1)
-        if not name.strip() or not text:
+        name, text = name.strip(), text.rstrip("\r")   # 줄끝 CR(Windows) 제거, 경로 정리
+        if not name or not text:
             continue
-        img = root / name.strip()
+        img = root / name
         if img.exists():
             rows.append((str(img), text))
     return rows

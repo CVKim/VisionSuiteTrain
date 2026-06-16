@@ -12,10 +12,9 @@ def test_detr_and_ocr_registered_no_planned():
     for a in ("rtdetr_hbb", "dfine_hbb", "rfdetr_hbb"):
         assert ("hbbdetection", a) in TRAINER_REGISTRY
         assert model_type_of(a) == "yolov8_hbb"           # 통일 디코드
-    for a in ("crnn_ctc", "parseq"):
-        assert ("ocr", a) in TRAINER_REGISTRY
-        assert model_type_of(a) == "parseq"
-        assert ARCH_TASK[a] == "ocr"
+    assert ("ocr", "crnn_ctc") in TRAINER_REGISTRY
+    assert model_type_of("crnn_ctc") == "crnn_ctc"        # parseq 핸들러 비호환 → 별도 model.type
+    assert ARCH_TASK["crnn_ctc"] == "ocr"
     assert PLANNED == set()                               # 전 arch 어댑터 등록
 
 
@@ -34,6 +33,6 @@ def test_ocr_preset_builds_with_charset(tmp_path):
     assert cfg.task == "ocr" and cfg.resolved_arch == "crnn_ctc"
     assert build_trainer(cfg).num_classes == 10
     my = build_model_yaml(cfg, weights="m.onnx")
-    assert my["postprocess"]["type"] == "parseq_decode"
-    assert my["postprocess"]["charset"] == "0123456789"
-    assert my["postprocess"]["blank_index"] == 10         # CTC blank = NC
+    assert my["postprocess"]["type"] == "crnn_ctc_decode"
+    assert my["postprocess"]["ocr_charset"] == charset     # VSC 가 읽는 키(시퀀스)
+    assert my["postprocess"]["blank_index"] == 10          # CTC blank = NC

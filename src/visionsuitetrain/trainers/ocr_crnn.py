@@ -1,8 +1,11 @@
 """OCR 인식 어댑터 (1차: CRNN + CTC, torch-only → [B, T, NC+1] softmax 확률).
 
 dataset.names = charset(문자 리스트, NC=문자수). 출력 채널 = NC+1(마지막=CTC blank).
-softmax 베이킹(참조 코어 paddle-rec 동형) → 출력 확률[0,1]; argmax+CTC-collapse 는 VSC 가 수행.
-(PaddleOCR det+rec+cls 풀스택은 paddle 의존 — 동일 어댑터 뒤 엔진 교체로 확장.)
+softmax 베이킹(paddle-rec 동형) → 출력 확률[0,1].
+★ 디코드(per-timestep argmax → repeat-collapse → blank=NC 제거)는 VSC 에 **CTC 디코드 핸들러**가
+  필요(model.type=crnn_ctc). 기존 parseq 핸들러는 attention[idx0=EOS, collapse 없음, (x/255-0.5)/0.5]
+  이라 비호환 — 학습 정규화 /255([0,1])에 맞춘 CTC 핸들러를 VSC 에 추가하는 게 통합점.
+(PaddleOCR det+cls 풀스택은 paddle 의존 — 동일 어댑터 뒤 엔진 교체로 확장.)
 heavy lib(torch)는 메서드 내부 lazy import.
 """
 from __future__ import annotations
@@ -10,11 +13,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..registry import register_trainer
+from ..registry import register_trainer, build_optimizer
 from .base import BaseTrainer
 
 
-@register_trainer("ocr", "crnn_ctc", "parseq")
+@register_trainer("ocr", "crnn_ctc")
 class OcrCrnnTrainer(BaseTrainer):
 
     def prepare_data(self) -> Any:
@@ -70,6 +73,8 @@ class OcrCrnnTrainer(BaseTrainer):
             def __getitem__(self, i):
                 ip, txt = rows[i]
                 img = cv2.imread(ip)
+                if img is None:
+                    raise ValueError(f"OCR 이미지 읽기 실패: {ip}")
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if C == 3 else \
                     cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)[..., None]
                 img = cv2.resize(img, (W, H)).reshape(H, W, C)
@@ -86,8 +91,7 @@ class OcrCrnnTrainer(BaseTrainer):
         loader = DataLoader(OcrDS(), batch_size=t.batch, shuffle=True, num_workers=0,
                             collate_fn=_collate)
         model = self._model(len(names) + 1, C).to(dev)
-        opt = torch.optim.AdamW(model.parameters(), lr=t.optimizer.lr,
-                                weight_decay=t.optimizer.weight_decay)
+        opt = build_optimizer(model.parameters(), t.optimizer)   # optimizer.type 존중(adamw/sgd)
         ctc = nn.CTCLoss(blank=blank, zero_infinity=True)
         model.train()
         loss = torch.tensor(0.0)

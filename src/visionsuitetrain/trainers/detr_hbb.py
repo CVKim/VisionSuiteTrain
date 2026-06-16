@@ -48,7 +48,7 @@ class DetrHbbTrainer(BaseTrainer):
         from ultralytics import RTDETR
 
         from ..export import (VscExporter, rename_io, introspect_output_shape,
-                              ensure_channel_first_det)
+                              ensure_channel_first_det, scale_det_boxes_to_pixels)
 
         e = self.cfg.export
         m = RTDETR(str(ckpt))
@@ -58,5 +58,7 @@ class DetrHbbTrainer(BaseTrainer):
         onnx_path.replace(dst)
         rename_io(dst, e.io_names.input, e.io_names.output)
         ensure_channel_first_det(dst, force=True)   # RT-DETR query-major([1,A,4+NC]) → [1,4+NC,A]
+        # ⚠ RT-DETR 박스는 정규화[0,1] export(px 스케일은 그래프 밖) → 입력px 로 bake(VSC [0,H] 정합)
+        scale_det_boxes_to_pixels(dst, e.input.w, e.input.h, len(self.names))
         out_shape = introspect_output_shape(dst)
         return VscExporter(self.cfg).write(dst, out_shape, weights_name="model.onnx")
