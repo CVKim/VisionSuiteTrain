@@ -85,10 +85,12 @@ class DeepLabTrainer(BaseTrainer):
                 return torch.from_numpy(x), torch.from_numpy(msk.astype(np.int64))
 
         train_ds = SegDS(data.get("train", []))
-        loader = DataLoader(train_ds, batch_size=t.batch, shuffle=True, num_workers=t.workers)
+        loader = DataLoader(train_ds, batch_size=t.batch, shuffle=True,
+                            num_workers=t.data_module.num_workers)
 
         model = self._model(len(self.names)).to(dev)
-        opt = torch.optim.AdamW(model.parameters(), lr=t.lr, weight_decay=t.weight_decay)
+        opt = torch.optim.AdamW(model.parameters(), lr=t.optimizer.lr,
+                                weight_decay=t.optimizer.weight_decay)
         crit = nn.CrossEntropyLoss()
         model.train()
         for ep in range(t.epochs):

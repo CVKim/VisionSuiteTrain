@@ -7,11 +7,11 @@ train:
   epochs: 200
   batch: 16
   imgsz: 1024
-  optimizer: adamw
-  lr: 1.0e-3
-  weight_decay: 5.0e-4
   amp: true
   gpus: [0]
+  optimizer: { type: adamw, lr: 1.0e-3, weight_decay: 5.0e-4 }
+  scheduler: { type: cosine }
+  data_module: { num_workers: 8 }
 export:
   io_names: { input: data, output: output }
   input: { w: 1024, h: 1024, c: 3, value_range: [0.0, 255.0] }

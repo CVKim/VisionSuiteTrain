@@ -7,12 +7,14 @@ train:
   epochs: 300
   batch: 16
   imgsz: 640
-  optimizer: sgd
-  lr: 1.0e-2
-  weight_decay: 5.0e-4
   amp: true
   gpus: [0]
-  augment: { mosaic: 0.8, mixup: 0.05, fliplr: 0.5, hsv_h: 0.015, hsv_s: 0.7, hsv_v: 0.4 }
+  max_grad_norm: 10.0
+  optimizer: { type: sgd, lr: 1.0e-2, weight_decay: 5.0e-4 }
+  scheduler: { type: linear_decay, end_lr: 1.0e-4 }
+  data_module:
+    num_workers: 8
+    transforms: { mosaic: 0.8, mixup: 0.05, fliplr: 0.5, hsv_h: 0.015, hsv_s: 0.7, hsv_v: 0.4 }
 export:
   io_names: { input: data, output: output }
   input: { w: 640, h: 640, c: 3, value_range: [0.0, 255.0] }

@@ -64,12 +64,14 @@ class EfficientNetTrainer(BaseTrainer):
         idx_to_name = {i: c for c, i in train_ds.class_to_idx.items()}
         train_ds.target_transform = _RemapToNames(
             {i: name_to_idx[idx_to_name[i]] for i in idx_to_name})
-        loader = DataLoader(train_ds, batch_size=t.batch, shuffle=True, num_workers=t.workers)
+        loader = DataLoader(train_ds, batch_size=t.batch, shuffle=True,
+                            num_workers=t.data_module.num_workers)
 
         # head 는 항상 '선언된 전체 클래스 수' → 채널 순서=names, NC==len(names)
         # (train↔export 동일 크기라 state_dict 로드 mismatch 불가; 0-sample 클래스도 채널 점유)
         model = self._model(len(self.names)).to(dev)
-        opt = torch.optim.AdamW(model.parameters(), lr=t.lr, weight_decay=t.weight_decay)
+        opt = torch.optim.AdamW(model.parameters(), lr=t.optimizer.lr,
+                                weight_decay=t.optimizer.weight_decay)
         crit = nn.CrossEntropyLoss()
         model.train()
         loss = torch.tensor(0.0)
