@@ -5,9 +5,11 @@ BaseTrainer 를 노출하고, 구현된 어댑터를 import 해 @register_traine
 """
 from .base import BaseTrainer
 
-# 등록 트리거 (1차 범위). 어댑터 추가 시 여기에 import 추가.
+# 등록 트리거. 어댑터 추가 시 여기에 import 추가.
 from . import yolo_hbb      # noqa: F401  (hbbdetection, yolov8_hbb/yolov7_hbb)
+from . import yolo_obb      # noqa: F401  (obbdetection, yolov8_obb/yolov11_obb)
 from . import efficientnet  # noqa: F401  (classification, efficientnet/classifier)
 from . import deeplab       # noqa: F401  (segmentation, deeplab3pp/deeplab3pp_one_channel)
+from . import foundation_ad  # noqa: F401  (anomaly_detection, foundation_anomaly)
 
 __all__ = ["BaseTrainer"]

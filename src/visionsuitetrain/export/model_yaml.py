@@ -82,6 +82,16 @@ def build_model_yaml(cfg: TrainConfig, *, weights: str = "",
         postprocess.update({"classes": names, "seg_background_class": e.seg_background_class})
         if e.seg_mode == "one_channel":
             postprocess["confidence_threshold_one_channel_seg"] = [0.5] * len(names)
+    elif cfg.task == "anomaly_detection":   # VSC foundation_anomaly 디코드 메타
+        postprocess.update({
+            "classes": names,
+            "anomaly_sigmoid": False,        # 이미 [0,1] heatmap (그래프에서 clamp+scale)
+            "anomaly_score_mode": pc.get("anomaly_score_mode", "top_k_mean"),
+            "anomaly_top_k": int(pc.get("anomaly_top_k", 16)),
+            "anomaly_bin_threshold": int(pc.get("anomaly_bin_threshold", 128)),
+            "anomaly_min_area": int(pc.get("anomaly_min_area", 4)),
+            "decision": {"names": names},
+        })
 
     return {"model": model, "runtime": runtime, "preprocess": preprocess,
             "inference": inference, "postprocess": postprocess}

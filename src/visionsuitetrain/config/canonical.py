@@ -55,12 +55,13 @@ ARCH_TASK = {
     "foundation_anomaly": "anomaly_detection",
 }
 
-# 1차 범위에서 어댑터가 실제 등록된 canonical arch (정보용; 실제 게이트는 registry/build_trainer)
-IMPLEMENTED = {"yolov8_hbb", "yolov7_hbb", "efficientnet", "deeplab3pp", "deeplab3pp_one_channel"}
+# 어댑터가 실제 등록된 canonical arch (정보용; 실제 게이트는 registry/build_trainer)
+IMPLEMENTED = {"yolov8_hbb", "yolov7_hbb", "yolov8_obb", "efficientnet",
+               "deeplab3pp", "deeplab3pp_one_channel", "foundation_anomaly"}
 # export 컨트랙트·model.type 매핑은 확정(drop-in)이나 학습 어댑터 미구현(2차):
-#   dfine_hbb/rfdetr_hbb = labelme_hbb 입력 → [1,4+NC,A] export(=yolov8_hbb 디코드),
-#   foundation_anomaly = [1,1,H,W] heatmap, yolov8_obb = OBB. build_trainer 에서 '어댑터 없음'.
-PLANNED = {"dfine_hbb", "rfdetr_hbb", "yolov8_obb", "foundation_anomaly"}
+#   dfine_hbb/rfdetr_hbb = labelme_hbb 입력 → [1,4+NC,A] export(=yolov8_hbb 디코드).
+#   build_trainer 에서 '어댑터 없음' 에러.
+PLANNED = {"dfine_hbb", "rfdetr_hbb"}
 
 
 def model_type_of(arch: str) -> str:
