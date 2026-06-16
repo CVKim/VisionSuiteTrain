@@ -56,3 +56,39 @@ def test_ad_preset_builds_and_contract(tmp_path):
     VscExporter(cfg).assert_consistency(m, my, out)
     assert my["postprocess"]["type"] == "foundation_anomaly_decode"
     assert my["postprocess"]["anomaly_sigmoid"] is False
+
+
+# ── 리뷰 하네스 확정 결함 회귀 ──
+def test_to_obb_skips_degenerate_and_offscreen():
+    from visionsuitetrain.data.writers.yolo_obb import to_obb_lines
+    off = Sample("x.jpg", 100, 100, regions=[
+        Region("a", "polygon", [(-50, -50), (-40, -50), (-40, -40), (-50, -40)])])
+    assert to_obb_lines(off, {"a": 0}) == []           # 완전 화면밖 → clamp 붕괴 skip
+    line = Sample("x.jpg", 100, 100, regions=[
+        Region("a", "polygon", [(10, 10), (20, 10), (30, 10), (40, 10)])])
+    assert to_obb_lines(line, {"a": 0}) == []           # 일직선(면적 0) skip
+
+
+def test_to_obb_polygon_gt4_uses_minarearect():
+    from visionsuitetrain.data.writers.yolo_obb import to_obb_lines
+    s = Sample("x.jpg", 100, 100, regions=[Region("a", "polygon",
+               [(10, 10), (30, 12), (50, 10), (50, 40), (30, 42), (10, 40)])])
+    assert len(to_obb_lines(s, {"a": 0})[0].split()) == 9   # 6점 → minAreaRect → cls+8좌표
+
+
+def test_ad_model_yaml_norm_range_and_no_normalize():
+    cfg = build_config_from_preset("ad_default", root="./x", names=["defect"])
+    my = build_model_yaml(cfg, weights="m.onnx")
+    assert my["postprocess"]["anomaly_norm_min"] == 0.0
+    assert my["postprocess"]["anomaly_norm_max"] == 1.0
+    assert my["preprocess"]["normalize"] is False           # 그래프 /255 bake → VSC 재정규화 금지
+
+
+def test_cli_rejects_config_and_preset_together(tmp_path):
+    from visionsuitetrain.cli import main
+    c = tmp_path / "c.yaml"
+    c.write_text("task: classification\narch: efficientnet\n"
+                 "dataset: {root: ./x, names: [a, b]}\nexport: {input: {w: 64, h: 64}}\n",
+                 encoding="utf-8")
+    assert main(["check", "-c", str(c), "--preset", "cls_default",
+                 "--root", "./x", "--names", "a,b"]) == 2   # 동시 사용 → error exit 2

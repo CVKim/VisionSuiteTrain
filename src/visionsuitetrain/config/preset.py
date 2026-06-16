@@ -59,6 +59,7 @@ def build_config_from_preset(preset: str, *, root: str, names: list[str],
     ds.setdefault("format", "labelme")
     ds["root"] = root
     ds["names"] = list(names)
+    ds.setdefault("split", {"ratio": {"train": 0.8, "val": 0.1, "test": 0.1}})  # 기본 분할(train/val/test)
     data["dataset"] = ds
     if out_dir is not None:
         data.setdefault("run", {})["out_dir"] = out_dir

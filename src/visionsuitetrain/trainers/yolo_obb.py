@@ -48,7 +48,7 @@ class YoloObbTrainer(BaseTrainer):
         m = YOLO(str(ckpt))
         # nms=False → VSC 가 conf+NMS(rotated). OBB head export 는 [1,4+NC+1,A](angle 맨끝).
         onnx_path = Path(m.export(format="onnx", opset=e.opset, dynamic=e.dynamic_axes,
-                                  simplify=True, nms=False, imgsz=[e.input.h, e.input.w]))
+                                  simplify=e.simplify, nms=False, imgsz=[e.input.h, e.input.w]))
         dst = self.out_dir / "model.onnx"
         onnx_path.replace(dst)
         rename_io(dst, e.io_names.input, e.io_names.output)

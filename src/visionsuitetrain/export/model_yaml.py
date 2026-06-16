@@ -83,8 +83,12 @@ def build_model_yaml(cfg: TrainConfig, *, weights: str = "",
         if e.seg_mode == "one_channel":
             postprocess["confidence_threshold_one_channel_seg"] = [0.5] * len(names)
     elif cfg.task == "anomaly_detection":   # VSC foundation_anomaly 디코드 메타
+        # ★ norm_min/max 를 출력 범위[0,1]로 명시(미지정 시 VSC 기본 [1,255]→heatmap 0 붕괴)
+        preprocess["normalize"] = False     # 그래프에서 /255 bake → VSC 재정규화 금지
         postprocess.update({
             "classes": names,
+            "anomaly_norm_min": float(pc.get("anomaly_norm_min", 0.0)),
+            "anomaly_norm_max": float(pc.get("anomaly_norm_max", 1.0)),
             "anomaly_sigmoid": False,        # 이미 [0,1] heatmap (그래프에서 clamp+scale)
             "anomaly_score_mode": pc.get("anomaly_score_mode", "top_k_mean"),
             "anomaly_top_k": int(pc.get("anomaly_top_k", 16)),

@@ -50,7 +50,7 @@ class YoloHbbTrainer(BaseTrainer):
         # ⚠ nms=False 필수(VSC 가 conf+NMS 수행). simplify 로 그래프 정리.
         # imgsz=[h,w] 로 전달(스칼라면 ultralytics 가 w×w 정사각으로 붕괴 → 비정사각 깨짐).
         onnx_path = Path(m.export(format="onnx", opset=e.opset, dynamic=e.dynamic_axes,
-                                  simplify=True, nms=False, imgsz=[e.input.h, e.input.w]))
+                                  simplify=e.simplify, nms=False, imgsz=[e.input.h, e.input.w]))
         dst = self.out_dir / "model.onnx"
         onnx_path.replace(dst)
         # io 이름을 VSC 컨트랙트(data/output)로 고정 후 출력 shape introspect([1,4+NC,A]).

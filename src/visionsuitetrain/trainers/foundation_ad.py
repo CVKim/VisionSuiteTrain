@@ -46,6 +46,9 @@ class FoundationAnomalyTrainer(BaseTrainer):
         dev = f"cuda:{t.gpus[0]}" if (t.gpus and torch.cuda.is_available()) else "cpu"
         H, W, C = e.input.h, e.input.w, e.input.c
         rows = list(data)
+        if not rows:
+            raise ValueError("이상탐지 학습 이미지 0장 (정상 이미지 필요)")
+        from torch.nn import functional as F
 
         class NormDS(Dataset):
             def __len__(self): return max(1, len(rows))
@@ -57,17 +60,24 @@ class FoundationAnomalyTrainer(BaseTrainer):
                 x = (img.astype(np.float32) / 255.0).reshape(H, W, C).transpose(2, 0, 1)
                 return torch.from_numpy(x)
 
-        loader = DataLoader(NormDS(), batch_size=t.batch, shuffle=True, num_workers=t.workers)
+        # NormDS 가 내부 클래스 → Windows spawn 피클 회피 위해 num_workers=0 고정
+        loader = DataLoader(NormDS(), batch_size=t.batch, shuffle=True, num_workers=0)
         ae = self._ae(C).to(dev)
         opt = torch.optim.AdamW(ae.parameters(), lr=t.lr, weight_decay=t.weight_decay)
         crit = nn.MSELoss()
+
+        def _recon(z):   # AE 출력이 입력과 다르면(H/W 8배수 아님) bilinear 강제 정렬
+            y = ae(z)
+            return y if y.shape[-2:] == z.shape[-2:] else \
+                F.interpolate(y, size=z.shape[-2:], mode="bilinear", align_corners=False)
+
         ae.train()
         loss = torch.tensor(0.0)
         for ep in range(t.epochs):
             for x in loader:
                 x = x.to(dev)
                 opt.zero_grad()
-                loss = crit(ae(x), x)
+                loss = crit(_recon(x), x)
                 loss.backward()
                 opt.step()
             print(f"[ad] epoch {ep+1}/{t.epochs} loss={float(loss):.5f}")
@@ -77,7 +87,7 @@ class FoundationAnomalyTrainer(BaseTrainer):
         with torch.no_grad():
             for x in loader:
                 x = x.to(dev)
-                err = (x - ae(x)).abs().mean(dim=1)
+                err = (x - _recon(x)).abs().mean(dim=1)
                 max_score = max(max_score, float(err.max()))
         ckpt = self.out_dir / "best.pt"
         torch.save({"state_dict": ae.state_dict(), "max_score": max_score,
@@ -97,6 +107,8 @@ class FoundationAnomalyTrainer(BaseTrainer):
         ae.eval()
         max_score = float(sd.get("max_score", 1.0)) if isinstance(sd, dict) else 1.0
 
+        from torch.nn import functional as F
+
         class _ADExport(nn.Module):   # forward = recon-error heatmap [B,1,H,W] in [0,1]
             def __init__(self, ae_, ms: float):
                 super().__init__()
@@ -105,7 +117,11 @@ class FoundationAnomalyTrainer(BaseTrainer):
 
             def forward(self, x):
                 x01 = x / 255.0                       # VSC 가 0..255 공급 → 내부 /255 bake
-                err = (x01 - self.ae(x01)).abs().mean(dim=1, keepdim=True)
+                rec = self.ae(x01)
+                if rec.shape[-2:] != x01.shape[-2:]:   # 입력 H/W 8배수 아니면 정렬
+                    rec = F.interpolate(rec, size=x01.shape[-2:], mode="bilinear",
+                                        align_corners=False)
+                err = (x01 - rec).abs().mean(dim=1, keepdim=True)
                 return torch.clamp(err / self.ms, 0.0, 1.0)
 
         model = _ADExport(ae, max_score).eval()
