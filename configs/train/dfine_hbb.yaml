@@ -1,0 +1,48 @@
+# D-FINE HBB detection — 2차(학습 어댑터 미구현). export 컨트랙트는 yolov8_hbb 와 동일 drop-in.
+# 실측 export: [1, 4+NC, 300] (A=쿼리), value_range[0,H] → VSC yolov8_hbb 핸들러로 디코드.
+# labelme_hbb 입력·letterbox·patch 는 YOLO 와 동일. RF-DETR 은 arch: rfdetr_hbb 로 동형.
+# (현재는 `vstrain check` 시 adapter=planned(2차); train 은 어댑터 구현 후)
+schema_version: 1
+
+run:
+  name: demo_dfine
+  seed: 42
+  out_dir: ./runs/${run.name}
+
+task: hbbdetection
+arch: dfine_hbb
+arch_variant:
+  size: large                  # D-FINE backbone
+  num_queries: 300
+
+dataset:
+  format: labelme              # labelme_hbb — YOLO 와 동일 입력
+  root: ./_local_data/det
+  names: [scratch, dent, stain]
+  split: { ratio: { train: 0.8, val: 0.1, test: 0.1 } }
+
+train:
+  epochs: 100
+  batch: 4
+  imgsz: 1024
+  optimizer: adamw
+  lr: 5.0e-4
+  weight_decay: 1.25e-4
+  amp: false
+  gpus: [0]
+  workers: 8
+
+export:
+  io_names: { input: data, output: output }
+  input: { w: 1024, h: 1024, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  dynamic_axes: false
+  backend: trt
+  fp16: true
+  preprocess_carry:
+    resize_mode: letterbox
+    letterbox_pad_value: 0
+    normalize: true
+    rgb: true
+    patch: { height: 1024, width: 1024, overlap: 0.5 }   # 대형 이미지 타일링
+    border_suppression: 0.2                               # 패치 경계 억제(talos manifest 동형)
