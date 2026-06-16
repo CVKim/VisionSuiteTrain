@@ -1,8 +1,10 @@
-"""이상탐지 어댑터 (1차: 재구성 AE → per-pixel 오차 heatmap [1,1,H,W] → VSC foundation_anomaly).
+"""이상탐지 어댑터 (feature-reconstruction → per-pixel 오차 heatmap [1,1,H,W] → VSC foundation_anomaly).
 
-비지도(정상 이미지만 학습). export 모델 forward = |x/255 - recon| 채널평균 → max_score 로 정규화
-→ clamp[0,1] → [1,1,H,W]. (foundation/DINOv2 변형은 차후 — 출력 컨트랙트 동일하므로 _ae 교체만.)
-heavy lib(torch)는 메서드 내부 lazy import — nn.Module 정의도 메서드 내부.
+비지도(정상 이미지만). pixel-AE 는 결함도 복원해 분리력이 약함 → **frozen ImageNet 백본(resnet18)
+특징 공간**에서 디코더가 정상 특징을 복원하도록 학습, 결함은 특징 복원오차가 커진다(dinomaly 계열).
+forward: x/255 → imagenet 정규화 bake → enc(frozen) → dec → ||f-dec||² 채널평균 → upsample → clamp[0,1].
+입력은 RGB(c=3). (DINOv2 백본/메모리뱅크 등은 동일 컨트랙트 뒤 엔진 교체로 확장.)
+heavy lib(torch/torchvision)는 메서드 내부 lazy import — nn.Module 정의도 메서드 내부.
 """
 from __future__ import annotations
 
@@ -17,22 +19,46 @@ from .base import BaseTrainer
 class FoundationAnomalyTrainer(BaseTrainer):
 
     def prepare_data(self) -> Any:
-        from ..data import iter_labelme_dir, split_samples
-        samples = iter_labelme_dir(self.cfg.dataset.root)
-        by_split = split_samples(samples, self.cfg.dataset.split, self.cfg.run.seed)
-        # 비지도 — 정상 이미지 경로만 사용(라벨 무관)
-        return [s.image_path for s in by_split.get("train", []) if Path(s.image_path).exists()]
+        # 비지도 — 정상 이미지만 직접 글롭(라벨 무관). MVTec-AD(<cat>/train/good) 자동 인식,
+        # 그 외엔 dataset.root 재귀 글롭. (labelme dir 도 이미지 그대로 수집됨)
+        from ..data.readers.images import iter_images, mvtec_normal_dir
+        base = mvtec_normal_dir(self.cfg.dataset.root)
+        rows = iter_images(base)
+        if not rows:
+            raise ValueError(f"이상탐지 정상 이미지 0장: {base} "
+                             "(MVTec 은 dataset.root=<category>, 또는 정상 이미지 폴더)")
+        print(f"[ad] normal images: {len(rows)} from {base}")
+        return rows
 
-    def _ae(self, c: int):
+    def _model(self):
+        import torch
+        import torchvision as tv
         from torch import nn
-        return nn.Sequential(
-            nn.Conv2d(c, 32, 4, 2, 1), nn.ReLU(True),
-            nn.Conv2d(32, 64, 4, 2, 1), nn.ReLU(True),
-            nn.Conv2d(64, 128, 4, 2, 1), nn.ReLU(True),
-            nn.ConvTranspose2d(128, 64, 4, 2, 1), nn.ReLU(True),
-            nn.ConvTranspose2d(64, 32, 4, 2, 1), nn.ReLU(True),
-            nn.ConvTranspose2d(32, c, 4, 2, 1), nn.Sigmoid(),
-        )
+
+        class _FeatRecon(nn.Module):
+            def __init__(self):
+                super().__init__()
+                bb = tv.models.resnet18(weights=tv.models.ResNet18_Weights.IMAGENET1K_V1)
+                self.enc = nn.Sequential(bb.conv1, bb.bn1, bb.relu, bb.maxpool,
+                                         bb.layer1, bb.layer2)        # 128ch @ H/8
+                for p in self.enc.parameters():
+                    p.requires_grad_(False)
+                self.dec = nn.Sequential(
+                    nn.Conv2d(128, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(True),
+                    nn.Conv2d(256, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(True),
+                    nn.Conv2d(256, 128, 3, 1, 1),
+                )
+                self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+                self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+            def feats(self, x01):                # x01 in [0,1] → imagenet 정규화 → frozen enc
+                return self.enc((x01 - self.mean) / self.std)
+
+            def forward(self, x01):              # 학습용: (정상특징, 복원특징)
+                f = self.feats(x01)
+                return f, self.dec(f)
+
+        return _FeatRecon()
 
     def train(self, data: Any) -> Path:
         import cv2
@@ -41,95 +67,83 @@ class FoundationAnomalyTrainer(BaseTrainer):
         from torch import nn
         from torch.utils.data import DataLoader, Dataset
 
-        t = self.cfg.train
-        e = self.cfg.export
+        t, e = self.cfg.train, self.cfg.export
+        if e.input.c != 3:
+            raise ValueError("foundation_anomaly(feature-recon)는 RGB(c=3) 입력 필요")
         dev = f"cuda:{t.gpus[0]}" if (t.gpus and torch.cuda.is_available()) else "cpu"
-        H, W, C = e.input.h, e.input.w, e.input.c
+        H, W = e.input.h, e.input.w
         rows = list(data)
-        if not rows:
-            raise ValueError("이상탐지 학습 이미지 0장 (정상 이미지 필요)")
-        from torch.nn import functional as F
 
         class NormDS(Dataset):
-            def __len__(self): return max(1, len(rows))
+            def __len__(self): return len(rows)
             def __getitem__(self, i):
-                img = cv2.imread(rows[i])
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if C == 3 else \
-                    cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)[..., None]
+                img = cv2.cvtColor(cv2.imread(rows[i]), cv2.COLOR_BGR2RGB)
                 img = cv2.resize(img, (W, H), interpolation=cv2.INTER_LINEAR)
-                x = (img.astype(np.float32) / 255.0).reshape(H, W, C).transpose(2, 0, 1)
-                return torch.from_numpy(x)
+                return torch.from_numpy((img.astype(np.float32) / 255.0).transpose(2, 0, 1))
 
-        # NormDS 가 내부 클래스 → Windows spawn 피클 회피 위해 num_workers=0 고정
         loader = DataLoader(NormDS(), batch_size=t.batch, shuffle=True, num_workers=0)
-        ae = self._ae(C).to(dev)
-        opt = build_optimizer(ae.parameters(), t.optimizer)   # optimizer.type 존중(adamw/sgd)
-        crit = nn.MSELoss()
-
-        def _recon(z):   # AE 출력이 입력과 다르면(H/W 8배수 아님) bilinear 강제 정렬
-            y = ae(z)
-            return y if y.shape[-2:] == z.shape[-2:] else \
-                F.interpolate(y, size=z.shape[-2:], mode="bilinear", align_corners=False)
-
-        ae.train()
+        model = self._model().to(dev)
+        model.train()
+        model.enc.eval()                          # frozen 백본 — BN running stat 고정
+        opt = build_optimizer(model.dec.parameters(), t.optimizer)   # 디코더만 학습
+        mse = nn.MSELoss()
         loss = torch.tensor(0.0)
         for ep in range(t.epochs):
             for x in loader:
                 x = x.to(dev)
+                f, rec = model(x)
                 opt.zero_grad()
-                loss = crit(_recon(x), x)
+                loss = mse(rec, f.detach())       # 정상 특징 복원
                 loss.backward()
                 opt.step()
             print(f"[ad] epoch {ep+1}/{t.epochs} loss={float(loss):.5f}")
-        # 정규화 상수: 정상셋 per-pixel 최대 재구성오차(없으면 1.0)
-        ae.eval()
+        # 정규화 상수: 정상셋 특징복원오차 분포의 상위(99퍼센타일 근사 = per-image max 의 max)
+        model.eval()
         max_score = 1e-6
         with torch.no_grad():
             for x in loader:
                 x = x.to(dev)
-                err = (x - _recon(x)).abs().mean(dim=1)
+                f, rec = model(x)
+                err = ((f - rec) ** 2).mean(dim=1)         # [B,h',w']
                 max_score = max(max_score, float(err.max()))
         ckpt = self.out_dir / "best.pt"
-        torch.save({"state_dict": ae.state_dict(), "max_score": max_score,
+        torch.save({"state_dict": model.state_dict(), "max_score": max_score,
                     "num_classes": len(self.names)}, ckpt)
         return ckpt
 
     def export_to_vsc(self, ckpt: Path) -> dict[str, Path]:
         import torch
         from torch import nn
+        from torch.nn import functional as F
 
         from ..export import VscExporter, introspect_output_shape
 
         e = self.cfg.export
         sd = torch.load(str(ckpt), map_location="cpu")
-        ae = self._ae(e.input.c)
-        ae.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
-        ae.eval()
+        model = self._model()
+        model.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
+        model.eval()
         max_score = float(sd.get("max_score", 1.0)) if isinstance(sd, dict) else 1.0
+        H, W = e.input.h, e.input.w
 
-        from torch.nn import functional as F
-
-        class _ADExport(nn.Module):   # forward = recon-error heatmap [B,1,H,W] in [0,1]
-            def __init__(self, ae_, ms: float):
+        class _ADExport(nn.Module):   # forward = feature-recon-error heatmap [B,1,H,W] in [0,1]
+            def __init__(self, m, ms: float):
                 super().__init__()
-                self.ae = ae_
+                self.m = m
                 self.register_buffer("ms", torch.tensor(max(ms, 1e-6)))
 
             def forward(self, x):
-                x01 = x / 255.0                       # VSC 가 0..255 공급 → 내부 /255 bake
-                rec = self.ae(x01)
-                if rec.shape[-2:] != x01.shape[-2:]:   # 입력 H/W 8배수 아니면 정렬
-                    rec = F.interpolate(rec, size=x01.shape[-2:], mode="bilinear",
-                                        align_corners=False)
-                err = (x01 - rec).abs().mean(dim=1, keepdim=True)
+                f, rec = self.m(x / 255.0)                 # VSC 0..255 → /255 + (내부)imagenet 정규화
+                err = ((f - rec) ** 2).mean(dim=1, keepdim=True)
+                err = F.interpolate(err, size=(H, W), mode="bilinear", align_corners=False)
                 return torch.clamp(err / self.ms, 0.0, 1.0)
 
-        model = _ADExport(ae, max_score).eval()
+        exp = _ADExport(model, max_score).eval()
         dst = self.out_dir / "model.onnx"
         dummy = torch.randn(1, e.input.c, e.input.h, e.input.w)
         dyn = ({e.io_names.input: {0: "B"}, e.io_names.output: {0: "B"}}
                if e.dynamic_axes else None)
-        torch.onnx.export(model, dummy, str(dst), opset_version=e.opset,
+        torch.onnx.export(exp, dummy, str(dst), opset_version=e.opset,
                           input_names=[e.io_names.input], output_names=[e.io_names.output],
                           dynamic_axes=dyn)
         out_shape = introspect_output_shape(dst)      # [1, 1, H, W]
