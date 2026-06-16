@@ -1,0 +1,46 @@
+# YOLOv8 HBB detection → VSC eYolov8Hbb 컨트랙트.
+# 핵심: export.nms=False(어댑터 고정) → conf/NMS 는 VSC 가 수행. 출력 [1, 4+NC, A].
+schema_version: 1
+
+run:
+  name: demo_hbb
+  seed: 42
+  out_dir: ./runs/${run.name}
+
+task: hbbdetection
+arch: yolov8_hbb
+arch_variant:
+  size: m                      # n|s|m|l|x
+
+dataset:
+  format: labelme
+  root: ./_local_data/det      # labelme *.json + 이미지 (gitignored)
+  names: [scratch, dent, stain]   # 0-base 라벨 id = 순서 (단일 진실원)
+  split:
+    ratio: { train: 0.8, val: 0.1, test: 0.1 }
+
+train:
+  epochs: 100
+  batch: 16
+  imgsz: 640
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 5.0e-4
+  amp: true
+  gpus: [0]
+  workers: 8
+
+export:
+  to: vsc
+  format: onnx
+  io_names: { input: data, output: output }
+  input: { w: 640, h: 640, c: 3, dtype: FLOAT, value_range: [0.0, 255.0] }
+  opset: 17
+  dynamic_axes: false
+  backend: trt
+  fp16: true
+  preprocess_carry:
+    resize_mode: letterbox     # det 관행: letterbox(비율유지 패딩)
+    letterbox_pad_value: 0
+    normalize: true
+    rgb: true

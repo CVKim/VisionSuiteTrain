@@ -1,0 +1,49 @@
+# EfficientNet classification → VSC cls 컨트랙트.
+# 핵심: head 에 softmax 미주입(logit [1, NC] export) → softmax/top1 은 VSC 가 수행.
+schema_version: 1
+
+run:
+  name: demo_cls
+  seed: 42
+  out_dir: ./runs/${run.name}
+
+task: classification
+arch: efficientnet
+arch_variant:
+  size: b0                     # timm efficientnet_b0
+  timm_name: efficientnet_b0
+  pretrained: imagenet         # none → 무가중치
+
+dataset:
+  format: labelme
+  root: ./_local_data/cls      # 이미지단위 라벨(flags) 또는 단일 region.class_name
+  names: [ok, ng]
+  split:
+    ratio: { train: 0.8, val: 0.1, test: 0.1 }
+
+train:
+  epochs: 50
+  batch: 32
+  imgsz: 224
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  amp: true
+  gpus: [0]
+  workers: 8
+
+export:
+  to: vsc
+  format: onnx
+  io_names: { input: data, output: output }
+  input: { w: 224, h: 224, c: 3, dtype: FLOAT, value_range: [0.0, 255.0] }
+  opset: 17
+  dynamic_axes: false
+  backend: trt
+  fp16: true
+  cls_activation: softmax      # VSC decode 메타
+  preprocess_carry:
+    resize_mode: resize        # cls 관행: 단순 resize
+    normalize: true
+    imagenet_std: true         # timm 기본 정규화와 정합
+    rgb: true

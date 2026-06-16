@@ -1,0 +1,75 @@
+"""model.yaml 빌더 — VSC ModelConfig 매핑(runtime/preprocess/postprocess.decision)."""
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from ..config.canonical import model_type_of
+from ..config.schema import TrainConfig
+
+
+def build_model_yaml(cfg: TrainConfig, *, weights: str = "",
+                     nms_conf_vector: Optional[list[float]] = None) -> dict[str, Any]:
+    e = cfg.export
+    names = list(cfg.dataset.names)
+    mtype = model_type_of(cfg.arch)
+    pc = e.preprocess_carry
+
+    model: dict[str, Any] = {
+        "id": cfg.run.name,
+        "name": cfg.run.name,
+        "type": mtype,
+        "weights": weights,
+        "trt_cache": "",
+        "input": {"w": e.input.w, "h": e.input.h, "c": e.input.c},
+        "input_tensors": [e.io_names.input],
+        "output_tensors": [e.io_names.output],
+    }
+    runtime = {
+        "backend": e.backend,
+        "gpu_idx": cfg.train.gpus[0] if cfg.train.gpus else 0,
+        "fp16": e.fp16,
+        "instance_count": 1,
+        "on_memory": True,
+        "warmup": 1,
+    }
+    preprocess = {
+        "normalize": bool(pc.get("normalize", True)),
+        "imagenet_std": bool(pc.get("imagenet_std", False)),
+        "resize": {"w": e.input.w, "h": e.input.h, "mode": "bilinear"},
+        "letterbox": pc.get("resize_mode", "letterbox") == "letterbox",
+        "letterbox_pad_value": int(pc.get("letterbox_pad_value", 0)),
+        "rgb": bool(pc.get("rgb", True)),
+        "channel_first": True,
+    }
+    # global_std 우회(cls 변종 mean/std ≠ ImageNet)
+    if pc.get("global_std_mean") and pc.get("global_std_std"):
+        preprocess["global_std"] = True
+        preprocess["global_std_mean"] = list(pc["global_std_mean"])
+        preprocess["global_std_std"] = list(pc["global_std_std"])
+
+    inference = {"batch_size": 1, "patch": {"enable": False}, "tta": {"enable": False}}
+
+    postprocess: dict[str, Any] = {"type": f"{mtype}_decode"}
+    if cfg.task in ("hbbdetection", "obbdetection"):
+        ncv = nms_conf_vector or [0.25] * len(names)
+        postprocess.update({
+            "conf_thres": 0.25, "iou_thres": 0.45, "max_det": 300,
+            "classes": names,
+            "decision": {
+                "names": names,
+                "nms_conf_vector": list(ncv),
+                "nms_iou_th": 0.45,
+                "width_th": [0] * len(names),
+                "height_th": [0] * len(names),
+                "judge_by_feret": [0] * len(names),
+            },
+        })
+    elif cfg.task == "classification":
+        postprocess.update({"classes": names, "cls_activation": e.cls_activation})
+    elif cfg.task == "segmentation":
+        postprocess.update({"classes": names, "seg_background_class": e.seg_background_class})
+        if e.seg_mode == "one_channel":
+            postprocess["confidence_threshold_one_channel_seg"] = [0.5] * len(names)
+
+    return {"model": model, "runtime": runtime, "preprocess": preprocess,
+            "inference": inference, "postprocess": postprocess}

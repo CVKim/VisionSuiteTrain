@@ -1,0 +1,51 @@
+# DeepLabV3+ segmentation → VSC seg 컨트랙트.
+# 핵심: activation 미주입(logit [1, C, H, W] export) → per-pixel softmax/argmax 는 VSC.
+# names[0] = 배경(seg_background_class: 0) 규약.
+schema_version: 1
+
+run:
+  name: demo_seg
+  seed: 42
+  out_dir: ./runs/${run.name}
+
+task: segmentation
+arch: deeplab3pp
+arch_variant:
+  lib: smp                     # smp(DeepLabV3+) | torchvision(DeepLabV3)
+  encoder: resnet50
+  encoder_weights: imagenet
+
+dataset:
+  format: labelme
+  root: ./_local_data/seg      # labelme polygon → class-id mask PNG
+  names: [background, crack, dust]   # index 0 = 배경
+  split:
+    ratio: { train: 0.8, val: 0.1, test: 0.1 }
+
+train:
+  epochs: 80
+  batch: 8
+  imgsz: 512
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 5.0e-4
+  amp: true
+  gpus: [0]
+  workers: 8
+
+export:
+  to: vsc
+  format: onnx
+  io_names: { input: data, output: output }
+  input: { w: 512, h: 512, c: 3, dtype: FLOAT, value_range: [0.0, 255.0] }
+  opset: 17
+  dynamic_axes: false
+  backend: trt
+  fp16: true
+  seg_background_class: 0
+  seg_mode: multi_channel      # multi_channel | one_channel
+  preprocess_carry:
+    resize_mode: resize
+    normalize: true
+    imagenet_std: true
+    rgb: true

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visionsuitetrain"
+version = "0.1.0a1"
+description = "통합 학습 코어 — 하나의 config 로 det/cls/seg 학습 후 VisionSuiteCore 컨트랙트로 export"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+# 어댑터별 학습 엔진 — 필요한 것만 설치(lazy import)
+yolo = ["ultralytics>=8.1"]
+cls  = ["timm>=1.0"]
+seg  = ["segmentation-models-pytorch>=0.3"]
+export = ["onnx>=1.15", "onnxslim>=0.1", "pycocotools>=2.0"]
+dev  = ["pytest>=7.4"]
+
+[project.scripts]
+vstrain = "visionsuitetrain.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,21 @@
+# VisionSuiteTrain — 런타임 의존성
+# (torch/torchvision 은 CUDA 버전에 맞춰 별도 설치 권장: https://pytorch.org)
+torch>=2.1
+torchvision>=0.16
+numpy>=1.24
+opencv-python>=4.8
+pyyaml>=6.0
+pydantic>=2.5
+
+# 학습 엔진(어댑터별 — 필요한 것만 설치 가능, lazy import)
+ultralytics>=8.1            # yolov8/yolo11 det/seg/cls
+timm>=1.0                   # efficientnet 등 classification
+segmentation-models-pytorch>=0.3   # deeplabv3+ (torchvision deeplab 도 가능)
+
+# export / 평가
+onnx>=1.15
+onnxslim>=0.1               # onnx 그래프 단순화(ultralytics export simplify)
+pycocotools>=2.0            # COCO 평가/포맷
+
+# dev
+pytest>=7.4
