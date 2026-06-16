@@ -1,0 +1,26 @@
+# YOLOv8 HBB — Accuracy-Optimized (큰 백본 + 약한 증강, AdamW, 1024px + patch). dataset 런타임 주입.
+run: { name: hbb_accuracy }
+task: hbbdetection
+arch: yolov8_hbb
+arch_variant: { size: m }
+train:
+  epochs: 500
+  batch: 8
+  imgsz: 1024
+  optimizer: adamw
+  lr: 2.5e-4
+  weight_decay: 1.25e-4
+  amp: true
+  gpus: [0]
+  augment: { mosaic: 0.0, mixup: 0.0, fliplr: 0.25, flipud: 0.25 }
+export:
+  io_names: { input: data, output: output }
+  input: { w: 1024, h: 1024, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  preprocess_carry:
+    resize_mode: letterbox
+    normalize: true
+    rgb: true
+    patch: { height: 1024, width: 1024, overlap: 0.5 }
+    border_suppression: 0.2

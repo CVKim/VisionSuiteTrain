@@ -111,9 +111,8 @@ class TrainConfig(BaseModel):
         return canonical_arch(self.arch)
 
 
-def load_train_config(path: str | Path) -> TrainConfig:
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    cfg = TrainConfig(**raw)
+def _finalize(cfg: TrainConfig) -> TrainConfig:
+    """raw→TrainConfig 이후 공통 후처리/정합(파일 로드·preset 빌드가 공유)."""
     # ${run.name} 치환
     cfg.run.out_dir = cfg.run.out_dir.replace("${run.name}", cfg.run.name)
     # arch↔task 정합
@@ -134,3 +133,13 @@ def load_train_config(path: str | Path) -> TrainConfig:
             and not cfg.resolved_arch.endswith("_one_channel"):
         raise ValueError("export.seg_mode 'one_channel' 인데 arch 가 '_one_channel' 아님")
     return cfg
+
+
+def build_train_config(raw: dict) -> TrainConfig:
+    """raw dict → 검증된 TrainConfig (preset 머지 결과/프로그램적 구성에 사용)."""
+    return _finalize(TrainConfig(**(raw or {})))
+
+
+def load_train_config(path: str | Path) -> TrainConfig:
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    return build_train_config(raw)

@@ -222,11 +222,22 @@ vstrain check    -c configs/train/yolov8_hbb.yaml  # schema + adapter mapping
 vstrain validate -c configs/train/yolov8_hbb.yaml  # dataset integrity (no training)
 vstrain train    -c configs/train/yolov8_hbb.yaml  # prepare → train → export
 vstrain export   -c configs/train/yolov8_hbb.yaml --ckpt runs/demo_hbb/train/weights/best.pt
+
+# or train from a named preset + runtime data injection (no full config file):
+vstrain presets                                                 # list bundled presets
+vstrain train --preset hbb_speed   --root ./data/det --names scratch,dent,stain
+vstrain train --preset cls_default --root ./data/cls --names ok,ng --out ./runs/exp1
 ```
 
 `train` writes `runs/<name>/model.onnx`, `runs/<name>/<name>_manifest.yaml`, and
 `runs/<name>/model.yaml` — drop that folder into VisionSuiteCore's `configs/models`
 and it infers.
+
+**Presets** (`visionsuitetrain/presets/{train,test,export}/*.yaml`) are *sparse,
+dataset-agnostic* configs — model / hyperparameters / augmentation / export only —
+that the runtime fills onto schema defaults and into which `--root`/`--names` are
+injected at train time (clean-room adoption of the reference training core's preset mechanism).
+Bundled train presets: `hbb_speed`, `hbb_accuracy`, `cls_default`, `seg_default`.
 
 ---
 

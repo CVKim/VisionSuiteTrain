@@ -1,0 +1,6 @@
+# export preset (참고) — train preset 의 export 블록으로 머지 가능한 공통 export 기본값.
+# 참조 학습 코어의 export preset 대응(batch_size/opset/ckpt_select).
+opset: 17
+fp16: true
+io_names: { input: data, output: output }
+ckpt_select: last        # last | best (재export 시 체크포인트 선택)

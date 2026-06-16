@@ -1,0 +1,21 @@
+# YOLOv8 HBB — Speed-Optimized (작은 백본 + 강한 증강, SGD). dataset 은 런타임 주입.
+run: { name: hbb_speed }
+task: hbbdetection
+arch: yolov8_hbb
+arch_variant: { size: s }
+train:
+  epochs: 300
+  batch: 16
+  imgsz: 640
+  optimizer: sgd
+  lr: 1.0e-2
+  weight_decay: 5.0e-4
+  amp: true
+  gpus: [0]
+  augment: { mosaic: 0.8, mixup: 0.05, fliplr: 0.5, hsv_h: 0.015, hsv_s: 0.7, hsv_v: 0.4 }
+export:
+  io_names: { input: data, output: output }
+  input: { w: 640, h: 640, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  preprocess_carry: { resize_mode: letterbox, letterbox_pad_value: 0, normalize: true, rgb: true }
