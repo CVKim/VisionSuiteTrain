@@ -1,0 +1,21 @@
+# EfficientNet CLS — default (b0, AdamW, ImageNet 정규화). dataset 런타임 주입.
+run: { name: cls_default }
+task: classification
+arch: efficientnet
+arch_variant: { size: b0, timm_name: efficientnet_b0, pretrained: imagenet }
+train:
+  epochs: 50
+  batch: 32
+  imgsz: 224
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  amp: true
+  gpus: [0]
+export:
+  io_names: { input: data, output: output }
+  input: { w: 224, h: 224, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  cls_activation: softmax
+  preprocess_carry: { resize_mode: resize, normalize: true, imagenet_std: true, rgb: true }

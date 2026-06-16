@@ -1,0 +1,6 @@
+# test preset (참고) — 평가/임계 스윕 기본값. 참조 학습 코어의 test preset 대응.
+# (threshold_sweep 와 향후 test 러너로 연결 예정)
+conf_threshold: 0.3
+iou_threshold: 0.5
+use_patch: false
+overlap_ratio: 0.5
