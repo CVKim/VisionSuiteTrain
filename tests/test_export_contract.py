@@ -122,7 +122,8 @@ def test_detr_archs_decode_via_unified_yolov8_hbb():
 def test_foundation_anomaly_mapping():
     assert model_type_of("foundation_anomaly") == "foundation_anomaly"
     assert ARCH_TASK["foundation_anomaly"] == "anomaly_detection"
-    assert {"dfine_hbb", "rfdetr_hbb", "foundation_anomaly"} <= PLANNED
+    assert {"dfine_hbb", "rfdetr_hbb"} <= PLANNED      # foundation_anomaly 는 이제 구현됨
+    assert "foundation_anomaly" not in PLANNED
 
 
 def test_dfine_sample_config_decodes_as_yolov8_hbb():

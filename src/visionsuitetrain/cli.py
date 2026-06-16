@@ -20,14 +20,17 @@ from .registry import TRAINER_REGISTRY, build_trainer
 
 def _resolve_config(args: argparse.Namespace) -> TrainConfig:
     """--config 또는 --preset(+--root/--names) → 검증된 TrainConfig."""
-    if getattr(args, "preset", None):
-        if not args.root or not args.names:
-            raise ValueError("--preset 사용 시 --root 와 --names 필요")
-        names = [n.strip() for n in args.names.split(",") if n.strip()]
-        return build_config_from_preset(args.preset, root=args.root, names=names,
+    preset, config = getattr(args, "preset", None), getattr(args, "config", None)
+    if preset and config:
+        raise ValueError("-c/--config 와 --preset 는 동시 사용 불가 (하나만)")
+    if preset:
+        names = [n.strip() for n in (args.names or "").split(",") if n.strip()]
+        if not args.root or not names:
+            raise ValueError("--preset 사용 시 --root 와 비어있지 않은 --names 필요")
+        return build_config_from_preset(preset, root=args.root, names=names,
                                         out_dir=getattr(args, "out", None))
-    if getattr(args, "config", None):
-        return load_train_config(args.config)
+    if config:
+        return load_train_config(config)
     raise ValueError("-c/--config 또는 --preset 중 하나가 필요합니다")
 
 

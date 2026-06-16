@@ -123,11 +123,14 @@ class DeepLabTrainer(BaseTrainer):
         model.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
         model.eval()
 
-        class Wrap(nn.Module):   # dict('out') → 단일 텐서로 평탄화(seg logit 단일 출력 보장)
+        from torch.nn import functional as F
+
+        class Wrap(nn.Module):   # dict('out')→텐서 평탄화 + softmax(dim=1) 베이킹(참조 코어 동형)
             def __init__(self, m): super().__init__(); self.m = m
             def forward(self, x):
                 o = self.m(x)
-                return o["out"] if isinstance(o, dict) else o
+                logits = o["out"] if isinstance(o, dict) else o
+                return F.softmax(logits, dim=1)
 
         wrapped = Wrap(model).eval()
         dst = self.out_dir / "model.onnx"
@@ -136,6 +139,6 @@ class DeepLabTrainer(BaseTrainer):
                if e.dynamic_axes else None)
         torch.onnx.export(wrapped, dummy, str(dst), opset_version=e.opset,
                           input_names=[e.io_names.input], output_names=[e.io_names.output],
-                          dynamic_axes=dyn)   # ⚠ activation 미주입(VSC 가 softmax/argmax 수행)
+                          dynamic_axes=dyn)   # ★ softmax(dim=1) BAKED → per-pixel 확률[0,1](실 manifest 정합)
         out_shape = introspect_output_shape(dst)
         return VscExporter(self.cfg).write(dst, out_shape, weights_name="model.onnx")

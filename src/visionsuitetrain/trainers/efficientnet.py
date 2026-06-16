@@ -97,14 +97,23 @@ class EfficientNetTrainer(BaseTrainer):
         ck_nc = sd.get("num_classes", len(self.names)) if isinstance(sd, dict) else len(self.names)
         if ck_nc != len(self.names):   # 학습/export config 클래스 수 불일치 → fail-fast
             raise ValueError(f"ckpt num_classes({ck_nc}) != dataset.names({len(self.names)})")
-        model = self._model(len(self.names))
-        model.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
-        model.eval()
+        from torch import nn
+        from torch.nn import functional as F
+
+        base = self._model(len(self.names))
+        base.load_state_dict(sd["state_dict"] if "state_dict" in sd else sd)
+        base.eval()
+
+        class _ClsExport(nn.Module):   # softmax 베이킹(참조 코어 동형) → 출력=확률[0,1]
+            def __init__(self, m): super().__init__(); self.m = m
+            def forward(self, x): return F.softmax(self.m(x), dim=1)
+
+        model = _ClsExport(base).eval()
         dst = self.out_dir / "model.onnx"
         dummy = torch.randn(1, e.input.c, e.input.h, e.input.w)
         dyn = {e.io_names.input: {0: "B"}, e.io_names.output: {0: "B"}} if e.dynamic_axes else None
         torch.onnx.export(model, dummy, str(dst), opset_version=e.opset,
                           input_names=[e.io_names.input], output_names=[e.io_names.output],
-                          dynamic_axes=dyn)   # ⚠ head 에 softmax 없음(logit export)
+                          dynamic_axes=dyn)   # ★ softmax BAKED → 출력 확률(실 manifest value_range[0,1] 정합)
         out_shape = introspect_output_shape(dst)
         return VscExporter(self.cfg).write(dst, out_shape, weights_name="model.onnx")

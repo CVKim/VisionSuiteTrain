@@ -47,8 +47,9 @@ def build_manifest(cfg: TrainConfig, output_shape: list, *,
     in_name = e.io_names.input
     out_name = e.io_names.output
     H, W, C = e.input.h, e.input.w, e.input.c
-    is_det = cfg.task.endswith("detection")
+    is_det = cfg.task in ("hbbdetection", "obbdetection")   # ⚠ anomaly_detection 제외
     is_seg = cfg.task == "segmentation"
+    is_anomaly = cfg.task == "anomaly_detection"
 
     env = _env()
     env["opset"] = e.opset
@@ -108,6 +109,8 @@ def build_manifest(cfg: TrainConfig, output_shape: list, *,
         default_conf = float(e.preprocess_carry.get("conf_threshold", 0.25))
         manifest["task"]["thresholds"] = dict(thresholds) if thresholds else {
             n: default_conf for n in names}
+    elif is_anomaly:   # 이상탐지는 글로벌 scalar threshold(real manifest 동형)
+        manifest["task"]["thresholds"] = float(e.preprocess_carry.get("anomaly_threshold", 0.5))
     elif thresholds:
         manifest["task"]["thresholds"] = dict(thresholds)
     # 세그멘테이션: 배경 채널 인덱스 명시(label_map 은 0..N-1 전체 유지)
