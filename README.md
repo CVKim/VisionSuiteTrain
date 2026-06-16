@@ -95,10 +95,10 @@ all derive from it, and the exporter asserts they agree before writing.
 
 ## 4.  The export contract — one shape family, decode lives in the runtime
 
-Every adapter exports **raw logits** in a fixed layout; **all decoding
-(activation, NMS, argmax) happens in VisionSuiteCore**. This is what lets v7/v8/
-D-FINE/RF-DETR collapse onto a single runtime handler, and keeps train/runtime
-decoupled.
+Detectors export **decoded boxes + sigmoid scores, pre-NMS** (the runtime owns NMS);
+classifiers and segmenters **bake softmax into the graph** (output = probabilities),
+matching the reference training core's real exports. This keeps v7/v8/D-FINE/RF-DETR
+on a single runtime handler and the contract faithful to production.
 
 ```mermaid
 flowchart LR
@@ -107,25 +107,26 @@ flowchart LR
     classDef v fill:#1c1f26,stroke:#6cb6ff,stroke-width:1.2px,color:#e6ebf3
 
     H["HBB ONNX<br/>[1, 4+NC, A] · pre-NMS"]:::m --> VC
-    CL["CLS ONNX<br/>[1, NC] · logit"]:::m --> VC
-    SG["SEG ONNX<br/>[1, C, H, W] · logit"]:::m --> VC
+    CL["CLS ONNX<br/>[1, NC] · softmax probs"]:::m --> VC
+    SG["SEG ONNX<br/>[1, C, H, W] · softmax probs"]:::m --> VC
     VC["VisionSuiteCore<br/>decode"]:::c --> O1["conf + NMS<br/>+ letterbox-inverse"]:::v
-    VC --> O2["softmax + top-1"]:::v
-    VC --> O3["per-pixel softmax / argmax"]:::v
+    VC --> O2["top-1 (argmax)"]:::v
+    VC --> O3["per-pixel argmax / heatmap"]:::v
 ```
 
 | Task | ONNX output | Coords / values | Runtime decode (VSC) |
 |---|---|---|---|
 | HBB detection | `[1, 4+NC, A]` | `cxcywh` in **input px**, `value_range [0, H]` | per-class conf → NMS → letterbox-inverse |
-| Classification | `[1, NC]` | logit, `value_range [0, 1]` | softmax → top-1 |
-| Segmentation | `[1, C, H, W]` | logit, `value_range [0, 1]` | per-pixel softmax / argmax (bg = channel 0) |
+| Classification | `[1, NC]` | **softmax probs** `[0, 1]` | top-1 (argmax) |
+| Segmentation | `[1, C, H, W]` | **per-pixel softmax probs** `[0, 1]` | argmax / per-channel heatmap (bg = channel 0) |
 
 - **HBB**: exported with `nms=False` so the runtime owns conf + NMS. `A` = number
   of anchor/grid predictions; `NC` = number of classes.
-- **CLS**: **no softmax in the head** — the logit is exported and the runtime
-  applies the activation declared in `model.yaml`.
-- **SEG**: **no activation baked into the graph** — `manifest.yaml` declares
-  `activation: softmax` + `background_index`, and the runtime applies it.
+- **CLS**: **softmax baked into the graph** (reference-core faithful) → output is
+  class probabilities `[0,1]`; the runtime takes top-1.
+- **SEG**: **softmax(dim=1) baked** → per-pixel class probabilities; `manifest.yaml`
+  declares `activation: softmax` + `background_index` as descriptive metadata, and the
+  runtime takes per-pixel argmax (or a per-channel heatmap).
 
 > **Verified against production exports.** The `manifest.yaml` schema
 > (`environment / inputs / outputs / preprocessing / task`), int-keyed
@@ -141,10 +142,12 @@ flowchart LR
 | Task | arch (config) | wrapped engine | ONNX contract | VSC handler |
 |---|---|---|---|---|
 | HBB detection | `yolov8_hbb`, `yolov7_hbb` | ultralytics YOLO | `[1, 4+NC, A]` | `yolov8_hbb` |
-| Classification | `efficientnet`, `classifier` | timm | `[1, NC]` | `efficientnet` |
-| Segmentation | `deeplab3pp`, `deeplab3pp_one_channel` | smp (DeepLabV3+) / torchvision | `[1, C, H, W]` | `deeplab3pp` |
+| OBB detection | `yolov8_obb`, `yolov11_obb` | ultralytics YOLO-OBB | `[1, 4+NC+1, A]` (angle last) | `yolov8_obb` |
+| Classification | `efficientnet`, `classifier` | timm | `[1, NC]` softmax | `efficientnet` |
+| Segmentation | `deeplab3pp`, `deeplab3pp_one_channel` | smp (DeepLabV3+) / torchvision | `[1, C, H, W]` softmax | `deeplab3pp` |
+| Anomaly | `foundation_anomaly` | recon-AE (1st pass) | `[1, 1, H, W]` heatmap `[0,1]` | `foundation_anomaly` |
 | **(roadmap)** detection | `dfine_hbb`, `rfdetr_hbb` | D-FINE / RF-DETR | `[1, 4+NC, A]` (A=queries)† | `yolov8_hbb` (unified)† |
-| **(roadmap)** anomaly | `foundation_anomaly` | foundation AD | `[1, 1, H, W]` heatmap | `foundation_anomaly` |
+| **(roadmap)** ocr | `paddleocr` | PaddleOCR det+rec+cls | DB map / CTC / angle | (db / parseq) |
 
 † **Verified against real production exports.** D-FINE `[1, 16, 300]` and RF-DETR
 `[1, 27, 300]` already emit the **unified `[1, 4+NC, A]` channel-first layout**

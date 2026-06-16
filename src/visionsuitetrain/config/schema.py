@@ -57,6 +57,7 @@ class ExportCfg(BaseModel):
     input: InputCfg
     opset: int = 17
     dynamic_axes: bool = False
+    simplify: bool = True        # ultralytics export onnxslim 단순화(일부 env 에서 segfault → false)
     backend: str = "trt"
     fp16: bool = True
     preprocess_carry: dict[str, Any] = Field(default_factory=dict)

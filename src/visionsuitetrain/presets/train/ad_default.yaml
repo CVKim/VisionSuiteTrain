@@ -1,0 +1,27 @@
+# Foundation Anomaly — default (1차 재구성 AE, 비지도/정상 이미지만). names[0]=결함 클래스명.
+# 입력 H/W 는 8 의 배수(AE 3-stride). dataset 런타임 주입.
+run: { name: ad_default }
+task: anomaly_detection
+arch: foundation_anomaly
+train:
+  epochs: 50
+  batch: 16
+  imgsz: 256
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  amp: false
+  gpus: [0]
+export:
+  io_names: { input: data, output: output }
+  input: { w: 256, h: 256, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  preprocess_carry:
+    resize_mode: resize
+    normalize: true
+    rgb: true
+    anomaly_threshold: 0.5
+    anomaly_score_mode: top_k_mean
+    anomaly_top_k: 16
+    anomaly_bin_threshold: 128

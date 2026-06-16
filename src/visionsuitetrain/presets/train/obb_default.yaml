@@ -1,0 +1,20 @@
+# YOLOv8 OBB — default (회전 박스 검출). dataset 런타임 주입(labelme polygon 4점/rectangle).
+run: { name: obb_default }
+task: obbdetection
+arch: yolov8_obb
+arch_variant: { size: m }
+train:
+  epochs: 200
+  batch: 16
+  imgsz: 1024
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 5.0e-4
+  amp: true
+  gpus: [0]
+export:
+  io_names: { input: data, output: output }
+  input: { w: 1024, h: 1024, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  preprocess_carry: { resize_mode: letterbox, letterbox_pad_value: 0, normalize: true, rgb: true }
