@@ -1,7 +1,8 @@
-# D-FINE HBB detection — 2차(학습 어댑터 미구현). export 컨트랙트는 yolov8_hbb 와 동일 drop-in.
-# 실측 export: [1, 4+NC, 300] (A=쿼리), value_range[0,H] → VSC yolov8_hbb 핸들러로 디코드.
-# labelme_hbb 입력·letterbox·patch 는 YOLO 와 동일. RF-DETR 은 arch: rfdetr_hbb 로 동형.
-# (현재는 `vstrain check` 시 adapter=planned(2차); train 은 어댑터 구현 후)
+# D-FINE HBB detection — DETR-family. 학습 엔진=ultralytics RT-DETR(DetrHbbTrainer, 구현됨).
+# export 컨트랙트는 yolov8_hbb drop-in: [1, 4+NC, A] channel-first(query-major→transpose),
+# 박스는 입력px 로 스케일(VSC [0,H] 정합). RF-DETR 은 arch: rfdetr_hbb 로 동형.
+# ⚠ RT-DETR top-300 query → imgsz ≥ 320 권장(작으면 'index k out of range').
+# (정확한 D-FINE upstream 가중치는 동일 어댑터 뒤 엔진 교체.)
 schema_version: 1
 
 run:

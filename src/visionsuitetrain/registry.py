@@ -44,3 +44,14 @@ def resolve_devices(gpus: list[int]) -> str | list[int]:
     if not gpus:
         return "cpu"
     return list(gpus)
+
+
+def build_optimizer(params, opt):
+    """OptimizerCfg(type/lr/weight_decay/momentum/betas) → torch optimizer. torch lazy import.
+    어댑터들이 optimizer.type 을 존중하도록 공통화(이전엔 AdamW 하드코딩)."""
+    import torch
+    if opt.type == "sgd":
+        return torch.optim.SGD(params, lr=opt.lr, momentum=opt.momentum,
+                               weight_decay=opt.weight_decay)
+    return torch.optim.AdamW(params, lr=opt.lr, betas=tuple(opt.betas),
+                             weight_decay=opt.weight_decay)

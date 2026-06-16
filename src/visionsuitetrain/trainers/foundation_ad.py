@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..registry import register_trainer
+from ..registry import register_trainer, build_optimizer
 from .base import BaseTrainer
 
 
@@ -63,8 +63,7 @@ class FoundationAnomalyTrainer(BaseTrainer):
         # NormDS 가 내부 클래스 → Windows spawn 피클 회피 위해 num_workers=0 고정
         loader = DataLoader(NormDS(), batch_size=t.batch, shuffle=True, num_workers=0)
         ae = self._ae(C).to(dev)
-        opt = torch.optim.AdamW(ae.parameters(), lr=t.optimizer.lr,
-                                weight_decay=t.optimizer.weight_decay)
+        opt = build_optimizer(ae.parameters(), t.optimizer)   # optimizer.type 존중(adamw/sgd)
         crit = nn.MSELoss()
 
         def _recon(z):   # AE 출력이 입력과 다르면(H/W 8배수 아님) bilinear 강제 정렬

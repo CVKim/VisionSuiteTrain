@@ -15,8 +15,7 @@ def test_obb_and_ad_registered_not_planned():
     assert ("obbdetection", "yolov11_obb") in TRAINER_REGISTRY
     assert ("anomaly_detection", "foundation_anomaly") in TRAINER_REGISTRY
     assert {"yolov8_obb", "foundation_anomaly"} <= IMPLEMENTED
-    assert {"yolov8_obb", "foundation_anomaly"} & PLANNED == set()
-    assert PLANNED == {"dfine_hbb", "rfdetr_hbb"}
+    assert PLANNED == set()      # dfine/rfdetr 도 DETR 어댑터로 구현 → PLANNED 비움
 
 
 def test_to_obb_lines_polygon_and_rectangle():
