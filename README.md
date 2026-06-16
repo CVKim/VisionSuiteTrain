@@ -176,16 +176,18 @@ dataset:
   names: [scratch, dent, stain]    # 0-based class map = single source of truth
   split: { ratio: { train: 0.8, val: 0.1, test: 0.1 } }
 
-train:
+train:                             # 구조화 sub-config (평면 단축키 lr/optimizer:str/workers/augment 도 자동 이관)
   epochs: 100
   batch: 16
   imgsz: 640
-  optimizer: adamw                 # adamw | sgd
-  lr: 1.0e-3
-  weight_decay: 5.0e-4
   amp: true
   gpus: [0]                        # multi-GPU: [0,1,2,3]
-  workers: 8
+  max_grad_norm: 10.0
+  optimizer:    { type: adamw, lr: 1.0e-3, weight_decay: 5.0e-4 }   # adamw | sgd
+  scheduler:    { type: cosine, end_lr: 1.0e-4 }                    # cosine | linear_decay | multistep | none
+  data_module:  { num_workers: 8, transforms: { mosaic: 1.0, mixup: 0.0, fliplr: 0.5, hsv_h: 0.015 } }
+  data_selection:  { enable: false }     # 커리큘럼 샘플링(향후)
+  threshold_tuning: { enable: false, metric_to_maximize: mAP50 }
 
 export:
   io_names: { input: data, output: output }   # VSC contract names
