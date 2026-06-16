@@ -8,11 +8,11 @@ train:
   epochs: 80
   batch: 8
   imgsz: 512
-  optimizer: adamw
-  lr: 1.0e-3
-  weight_decay: 5.0e-4
   amp: true
   gpus: [0]
+  optimizer: { type: adamw, lr: 1.0e-3, weight_decay: 5.0e-4 }
+  scheduler: { type: cosine }
+  data_module: { num_workers: 8 }
 export:
   io_names: { input: data, output: output }
   input: { w: 512, h: 512, c: 3, value_range: [0.0, 255.0] }

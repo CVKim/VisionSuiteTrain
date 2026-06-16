@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .canonical import TASK_TYPES, ARCH_TASK, ARCH_TO_MODEL_TYPE, canonical_arch
 
@@ -66,19 +66,117 @@ class ExportCfg(BaseModel):
     seg_mode: str = "multi_channel"     # SEG 전용: multi_channel|one_channel
 
 
+class OptimizerCfg(BaseModel):
+    type: str = "adamw"                 # adamw | sgd
+    lr: float = 1.0e-3
+    weight_decay: float = 5.0e-4
+    momentum: float = 0.937             # sgd 전용
+    betas: list[float] = [0.9, 0.999]   # adamw 전용
+
+
+class SchedulerCfg(BaseModel):
+    type: str = "cosine"                # cosine | linear_decay | multistep | none
+    end_lr: float = 1.0e-4
+    warmup_epochs: int = 0
+    milestones: list[int] = Field(default_factory=list)
+    gamma: float = 0.1
+
+
+class TransformsCfg(BaseModel):
+    """증강 스펙(ultralytics 호환 키 + 공통). yolo 어댑터가 그대로 전달."""
+    hsv_h: float = 0.015
+    hsv_s: float = 0.7
+    hsv_v: float = 0.4
+    degrees: float = 0.0
+    translate: float = 0.1
+    scale: float = 0.5
+    shear: float = 0.0
+    perspective: float = 0.0
+    flipud: float = 0.0
+    fliplr: float = 0.5
+    mosaic: float = 1.0
+    mixup: float = 0.0
+
+
+class PatchCfg(BaseModel):
+    enable: bool = False
+    height: int = 0
+    width: int = 0
+    overlap_ratio: float = 0.5
+    margin_ratio: float = 0.25
+    selector: str = "centric"
+
+
+class DataModuleCfg(BaseModel):
+    num_workers: int = 8
+    rois: Optional[list[Any]] = None
+    filter_unlabeled: bool = False
+    patch: PatchCfg = Field(default_factory=PatchCfg)
+    transforms: TransformsCfg = Field(default_factory=TransformsCfg)
+
+
+class DataSelectionCfg(BaseModel):
+    enable: bool = False
+    interval_epoch: int = 5
+    sampling_ratio: float = 1.0
+    score_type: str = "target_uncertainty"
+    warmup_ratio: float = 0.1
+
+
+class ThresholdTuningCfg(BaseModel):
+    enable: bool = False
+    metric_to_maximize: str = "mAP50"   # mAP50 | Recall | Fbeta ...
+    beta: float = 1.0
+
+
 class TrainCfg(BaseModel):
+    """학습 설정(구조화). 평면 단축키(lr/weight_decay/optimizer:str/workers/augment/lr_schedule)는
+    model_validator 가 구조화 필드로 자동 이관(하위호환 + sparse preset 편의)."""
     epochs: int = 100
     batch: int = 16
     imgsz: int = 640
-    optimizer: str = "adamw"
-    lr: float = 1.0e-3
-    weight_decay: float = 5.0e-4
-    lr_schedule: dict[str, Any] = Field(default_factory=dict)
     amp: bool = True
     gpus: list[int] = Field(default_factory=lambda: [0])
-    workers: int = 8
-    augment: dict[str, Any] = Field(default_factory=dict)
-    early_stop: dict[str, Any] = Field(default_factory=dict)
+    max_grad_norm: float = 10.0
+    optimizer: OptimizerCfg = Field(default_factory=OptimizerCfg)
+    scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
+    data_module: DataModuleCfg = Field(default_factory=DataModuleCfg)
+    data_selection: DataSelectionCfg = Field(default_factory=DataSelectionCfg)
+    threshold_tuning: ThresholdTuningCfg = Field(default_factory=ThresholdTuningCfg)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_flat(cls, data):
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        opt = d.get("optimizer")
+        if isinstance(opt, str):           # optimizer: "adamw" → {type: adamw}
+            d["optimizer"] = {"type": opt}
+        if not isinstance(d.get("optimizer"), dict):
+            d["optimizer"] = {}
+        for k in ("lr", "weight_decay", "momentum"):   # 평면 lr 등 → optimizer.*
+            if k in d:
+                d["optimizer"].setdefault(k, d.pop(k))
+        dm = d.get("data_module")
+        if not isinstance(dm, dict):
+            dm = {}
+        d["data_module"] = dm
+        if "workers" in d:                 # workers → data_module.num_workers
+            dm.setdefault("num_workers", d.pop("workers"))
+        if "augment" in d:                 # augment(dict) → data_module.transforms
+            tr = dm.get("transforms")
+            if not isinstance(tr, dict):
+                tr = {}
+            dm["transforms"] = tr
+            for k, v in (d.pop("augment") or {}).items():
+                tr.setdefault(k, v)
+        if "lr_schedule" in d:             # lr_schedule(dict) → scheduler
+            sched = d.pop("lr_schedule") or {}
+            if isinstance(sched, dict) and sched and not d.get("scheduler"):
+                d["scheduler"] = sched
+        d.pop("early_stop", None)          # 미사용 폐기
+        return d
 
 
 class TrainConfig(BaseModel):

@@ -28,12 +28,17 @@ class YoloObbTrainer(BaseTrainer):
 
         size = self.cfg.arch_variant.get("size", "m")
         t = self.cfg.train
+        o, tr = t.optimizer, t.data_module.transforms
         m = YOLO(f"yolov8{size}-obb.pt")
         m.train(
             data=str(data), epochs=t.epochs, imgsz=t.imgsz, batch=t.batch,
-            optimizer=("AdamW" if t.optimizer == "adamw" else "SGD"),
-            lr0=t.lr, weight_decay=t.weight_decay, amp=t.amp,
-            device=resolve_devices(t.gpus), workers=t.workers,
+            optimizer=("AdamW" if o.type == "adamw" else "SGD"),
+            lr0=o.lr, weight_decay=o.weight_decay, amp=t.amp,
+            device=resolve_devices(t.gpus), workers=t.data_module.num_workers,
+            hsv_h=tr.hsv_h, hsv_s=tr.hsv_s, hsv_v=tr.hsv_v, degrees=tr.degrees,
+            translate=tr.translate, scale=tr.scale, shear=tr.shear,
+            perspective=tr.perspective, flipud=tr.flipud, fliplr=tr.fliplr,
+            mosaic=tr.mosaic, mixup=tr.mixup,
             project=str(self.out_dir), name="train", exist_ok=True,
             seed=self.cfg.run.seed,
         )
