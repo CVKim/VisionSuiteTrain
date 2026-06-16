@@ -1,0 +1,21 @@
+# DETR-family HBB (ultralytics RT-DETR → 통일 [1,4+NC,A]). dataset 런타임 주입(labelme HBB).
+# arch: rtdetr_hbb | dfine_hbb | rfdetr_hbb (모두 동일 컨트랙트, 엔진=RT-DETR).
+run: { name: detr_default }
+task: hbbdetection
+arch: rtdetr_hbb
+arch_variant: { size: l }      # rtdetr-l | rtdetr-x
+train:
+  epochs: 200
+  batch: 8
+  imgsz: 640
+  amp: true
+  gpus: [0]
+  optimizer: { type: adamw, lr: 1.0e-4, weight_decay: 1.0e-4 }
+  scheduler: { type: cosine }
+  data_module: { num_workers: 8 }
+export:
+  io_names: { input: data, output: output }
+  input: { w: 640, h: 640, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  preprocess_carry: { resize_mode: letterbox, letterbox_pad_value: 0, normalize: true, rgb: true }

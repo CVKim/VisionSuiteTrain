@@ -37,9 +37,12 @@ ARCH_TO_MODEL_TYPE = {
     "efficientnet": "efficientnet",
     "deeplab3pp": "deeplab3pp",
     "deeplab3pp_one_channel": "deeplab3pp_one_channel",
-    "dfine_hbb": "yolov8_hbb",          # 2차(학습 어댑터 미구현) — export 는 [1,4+NC,A] drop-in
-    "rfdetr_hbb": "yolov8_hbb",         # 2차 — A=쿼리(300), 디코드(conf+NMS) 동일
-    "foundation_anomaly": "foundation_anomaly",   # 2차 — [1,1,H,W] heatmap, scalar threshold
+    "rtdetr_hbb": "yolov8_hbb",         # DETR-family(ultralytics RT-DETR) — [1,4+NC,A] 통일
+    "dfine_hbb": "yolov8_hbb",          # DETR-family — 동일 컨트랙트(엔진=RT-DETR, 정확 가중치는 upstream)
+    "rfdetr_hbb": "yolov8_hbb",         # DETR-family — A=쿼리, 디코드(conf+NMS) 동일
+    "foundation_anomaly": "foundation_anomaly",   # [1,1,H,W] heatmap, scalar threshold
+    "crnn_ctc": "parseq",               # OCR 인식 — [B,T,NC+1] CTC, VSC parseq 핸들러로 디코드
+    "parseq": "parseq",
 }
 
 # 정규 arch → 허용 task (config 정합 검증용)
@@ -50,18 +53,21 @@ ARCH_TASK = {
     "efficientnet": "classification",
     "deeplab3pp": "segmentation",
     "deeplab3pp_one_channel": "segmentation",
+    "rtdetr_hbb": "hbbdetection",
     "dfine_hbb": "hbbdetection",
     "rfdetr_hbb": "hbbdetection",
     "foundation_anomaly": "anomaly_detection",
+    "crnn_ctc": "ocr",
+    "parseq": "ocr",
 }
 
 # 어댑터가 실제 등록된 canonical arch (정보용; 실제 게이트는 registry/build_trainer)
-IMPLEMENTED = {"yolov8_hbb", "yolov7_hbb", "yolov8_obb", "efficientnet",
-               "deeplab3pp", "deeplab3pp_one_channel", "foundation_anomaly"}
-# export 컨트랙트·model.type 매핑은 확정(drop-in)이나 학습 어댑터 미구현(2차):
-#   dfine_hbb/rfdetr_hbb = labelme_hbb 입력 → [1,4+NC,A] export(=yolov8_hbb 디코드).
-#   build_trainer 에서 '어댑터 없음' 에러.
-PLANNED = {"dfine_hbb", "rfdetr_hbb"}
+IMPLEMENTED = {"yolov8_hbb", "yolov7_hbb", "yolov8_obb", "rtdetr_hbb", "dfine_hbb",
+               "rfdetr_hbb", "efficientnet", "deeplab3pp", "deeplab3pp_one_channel",
+               "foundation_anomaly", "crnn_ctc", "parseq"}
+# 매핑·컨트랙트 확정 + 학습 엔진 가용(전 arch 어댑터 등록). 정확한 upstream 가중치
+#   (D-FINE/RF-DETR repo, PaddleOCR det+cls)는 동일 어댑터 뒤 엔진 교체로 확장.
+PLANNED: set[str] = set()
 
 
 def model_type_of(arch: str) -> str:
