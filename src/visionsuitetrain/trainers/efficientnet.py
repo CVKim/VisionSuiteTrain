@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..registry import register_trainer
+from ..registry import register_trainer, build_optimizer
 from .base import BaseTrainer
 
 
@@ -70,8 +70,7 @@ class EfficientNetTrainer(BaseTrainer):
         # head 는 항상 '선언된 전체 클래스 수' → 채널 순서=names, NC==len(names)
         # (train↔export 동일 크기라 state_dict 로드 mismatch 불가; 0-sample 클래스도 채널 점유)
         model = self._model(len(self.names)).to(dev)
-        opt = torch.optim.AdamW(model.parameters(), lr=t.optimizer.lr,
-                                weight_decay=t.optimizer.weight_decay)
+        opt = build_optimizer(model.parameters(), t.optimizer)   # optimizer.type 존중(adamw/sgd)
         crit = nn.CrossEntropyLoss()
         model.train()
         loss = torch.tensor(0.0)

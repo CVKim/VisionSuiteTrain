@@ -82,6 +82,13 @@ def build_model_yaml(cfg: TrainConfig, *, weights: str = "",
         postprocess.update({"classes": names, "seg_background_class": e.seg_background_class})
         if e.seg_mode == "one_channel":
             postprocess["confidence_threshold_one_channel_seg"] = [0.5] * len(names)
+    elif cfg.task == "ocr":                 # OCR 인식 — CTC 디코드 메타(VSC crnn_ctc 핸들러용)
+        postprocess.update({
+            "classes": names,
+            "ocr_charset": list(names),     # ★ VSC Recipe 파서가 읽는 키(문자 시퀀스)
+            "blank_index": len(names),      # CTC blank = NC(마지막 채널). collapse 후 제거
+            "decode": "ctc",
+        })
     elif cfg.task == "anomaly_detection":   # VSC foundation_anomaly 디코드 메타
         # ★ norm_min/max 를 출력 범위[0,1]로 명시(미지정 시 VSC 기본 [1,255]→heatmap 0 붕괴)
         preprocess["normalize"] = False     # 그래프에서 /255 bake → VSC 재정규화 금지

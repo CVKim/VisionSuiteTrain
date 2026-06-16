@@ -1,0 +1,20 @@
+# OCR 인식 (CRNN+CTC → [B, T, NC+1] softmax). dataset.names = charset(문자 리스트),
+# dataset.root 에 labels.txt(상대이미지경로<TAB>텍스트) 필요. 비정사각 입력(W>H) 관행.
+run: { name: ocr_default }
+task: ocr
+arch: crnn_ctc
+train:
+  epochs: 100
+  batch: 32
+  imgsz: 32
+  amp: false
+  gpus: [0]
+  optimizer: { type: adamw, lr: 1.0e-3, weight_decay: 1.0e-4 }
+  scheduler: { type: cosine }
+  data_module: { num_workers: 8 }
+export:
+  io_names: { input: data, output: output }
+  input: { w: 128, h: 32, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  preprocess_carry: { resize_mode: resize, normalize: true, rgb: true }
