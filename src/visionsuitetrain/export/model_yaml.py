@@ -47,7 +47,17 @@ def build_model_yaml(cfg: TrainConfig, *, weights: str = "",
         preprocess["global_std_mean"] = list(pc["global_std_mean"])
         preprocess["global_std_std"] = list(pc["global_std_std"])
 
-    inference = {"batch_size": 1, "patch": {"enable": False}, "tta": {"enable": False}}
+    patch_cfg = pc.get("patch")
+    inf_patch: dict[str, Any] = {"enable": False}
+    if patch_cfg:                      # HBB 대형 이미지 패치 타일링 → VSC inference.patch
+        inf_patch = {"enable": True,
+                     "w": int(patch_cfg.get("width", e.input.w)),
+                     "h": int(patch_cfg.get("height", e.input.h)),
+                     "overlap": float(patch_cfg.get("overlap", 0.5)),
+                     "assemble": "nms_global"}
+        if pc.get("border_suppression") is not None:
+            inf_patch["border_suppress"] = float(pc["border_suppression"])
+    inference = {"batch_size": 1, "patch": inf_patch, "tta": {"enable": False}}
 
     postprocess: dict[str, Any] = {"type": f"{mtype}_decode"}
     if cfg.task in ("hbbdetection", "obbdetection"):
