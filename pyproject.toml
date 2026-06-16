@@ -29,6 +29,9 @@ vstrain = "visionsuitetrain.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+visionsuitetrain = ["presets/**/*.yaml"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

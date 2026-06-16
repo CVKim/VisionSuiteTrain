@@ -1,0 +1,23 @@
+# DeepLabV3+ SEG — default (efficientnet-b2 encoder, AdamW, multi_channel). dataset 런타임 주입.
+# names[0] = background 규약(런타임 주입 시 첫 클래스가 배경).
+run: { name: seg_default }
+task: segmentation
+arch: deeplab3pp
+arch_variant: { lib: smp, encoder: efficientnet-b2, encoder_weights: imagenet }
+train:
+  epochs: 80
+  batch: 8
+  imgsz: 512
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 5.0e-4
+  amp: true
+  gpus: [0]
+export:
+  io_names: { input: data, output: output }
+  input: { w: 512, h: 512, c: 3, value_range: [0.0, 255.0] }
+  opset: 17
+  fp16: true
+  seg_background_class: 0
+  seg_mode: multi_channel
+  preprocess_carry: { resize_mode: resize, normalize: true, imagenet_std: true, rgb: true }
