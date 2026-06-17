@@ -17,5 +17,5 @@ export:
   input: { w: 224, h: 224, c: 3, value_range: [0.0, 255.0] }
   opset: 17
   fp16: true
-  cls_activation: softmax
+  cls_activation: auto        # 그래프 softmax 베이킹 → VSC auto(이중 softmax 회피)
   preprocess_carry: { resize_mode: resize, normalize: true, imagenet_std: true, rgb: true }
