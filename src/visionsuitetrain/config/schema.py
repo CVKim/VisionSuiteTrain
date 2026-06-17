@@ -61,7 +61,7 @@ class ExportCfg(BaseModel):
     backend: str = "trt"
     fp16: bool = True
     preprocess_carry: dict[str, Any] = Field(default_factory=dict)
-    cls_activation: str = "softmax"     # CLS 전용
+    cls_activation: str = "auto"        # CLS: export 가 softmax 베이킹 → VSC auto 가 확률 감지(이중 softmax 회피). softmax 강제는 왜곡.
     seg_background_class: int = 0        # SEG 전용
     seg_mode: str = "multi_channel"     # SEG 전용: multi_channel|one_channel
 

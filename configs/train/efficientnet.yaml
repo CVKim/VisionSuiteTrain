@@ -41,7 +41,7 @@ export:
   dynamic_axes: false
   backend: trt
   fp16: true
-  cls_activation: softmax      # VSC decode 메타
+  cls_activation: auto         # 그래프 softmax 베이킹 → VSC auto(이중 softmax 회피)
   preprocess_carry:
     resize_mode: resize        # cls 관행: 단순 resize
     normalize: true

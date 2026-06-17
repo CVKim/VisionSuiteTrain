@@ -70,7 +70,7 @@ def test_seg_one_channel_threshold_emitted(tmp_path):
 def test_cls_activation_carried():
     cfg = load_train_config(CFG_DIR / "efficientnet.yaml")
     my = build_model_yaml(cfg, weights="model.onnx")
-    assert my["postprocess"]["cls_activation"] == "softmax"
+    assert my["postprocess"]["cls_activation"] == "auto"   # 베이킹된 softmax → auto(VSC 이중 softmax 회피)
     assert my["preprocess"]["imagenet_std"] is True
 
 
